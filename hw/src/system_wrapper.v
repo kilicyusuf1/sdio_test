@@ -17,7 +17,8 @@ module system_wrapper
     reset,
     sys_clock,
     usb_uart_rxd,
-    usb_uart_txd);
+    usb_uart_txd,
+    sd_reset);
   inout io_cmd_0;
   inout [3:0]io_dat_0;
   output o_ck_0;
@@ -25,6 +26,7 @@ module system_wrapper
   input sys_clock;
   input usb_uart_rxd;
   output usb_uart_txd;
+  output wire sd_reset;
 
   wire io_cmd_0;
   wire [3:0]io_dat_0;
@@ -33,7 +35,9 @@ module system_wrapper
   wire sys_clock;
   wire usb_uart_rxd;
   wire usb_uart_txd;
-
+  
+  assign sd_reset = 1'b0; // Active low for powering micro sd slot
+  
   system system_i
        (.io_cmd_0(io_cmd_0),
         .io_dat_0(io_dat_0),
