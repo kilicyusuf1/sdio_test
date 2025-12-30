@@ -1,21 +1,59 @@
-# Ignore build output directory
-/build
-/export
+# ================= GENEL AYARLAR =================
+# Önce her şeyi yasakla
+*
+!*/
 
-# Ignore object files and dependent files
-.o
-.d
+# ================= İZİN VERİLENLER (DOSTLAR) =================
+# 1. Git ve Hardware (HW)
+!.gitignore
+!.gitmodules
+!hw/**
 
-#Ignore logs folder and log files
-/logs
-.log
+# 2. Vitis (SW) - Sadece Kök Ayarlar ve Kaynak Kodlar
+# Component'lerin ana ayar dosyalarını al
+!sw/*/vitis-comp.json
+!sw/*/CMakeLists.txt
+!sw/*/UserConfig.cmake
+!sw/*/*.yaml
+!sw/*/*.ld
 
-#Ignore lock files
-.lock
+# Kaynak kod klasörünü (src) komple al
+!sw/*/src/**
 
-.bin
-.pdi
-.vitisWorkspace.json
+# ================= KESİN YASAKLILAR (DÜŞMANLAR) =================
+# (Yukarıda izin verilmiş olsa bile bunları EZ ve SİL)
 
-_ide/logs
-_ide/.wsdata
+# 1. Vivado Çöpleri
+hw/**/*.jou
+hw/**/*.log
+hw/**/*.str
+hw/**/.Xil/
+hw/**/*.xpr
+
+# 2. Vitis Çöpleri - Klasör İsimleriyle Banlama
+# Bu klasörler platform oluşturulurken otomatik üretilir, Git'e gelmemeli.
+**/microblaze_*/
+**/cortex_*/
+**/zynq_*/
+**/bsp/
+**/export/
+**/build/
+**/_ide/
+**/.rigel_lopper/
+**/.analytics/
+**/.metadata/
+**/logs/
+
+# 3. Gereksiz Dosyalar
+**/compile_commands.json
+**/*.o
+**/*.d
+**/*.bin
+**/*.elf
+
+**/.cache/
+**/.clangd
+**/*.idx
+
+# --- Diğer Gereksizler ---
+**/Hello_worldExample.cmake
