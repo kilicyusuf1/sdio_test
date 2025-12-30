@@ -98,65 +98,59 @@ int sd_card_init(void) {
     // ==========================================
     // ADIM 5: ACMD41 (Kart Hazirlama Dongusu)
     // ==========================================
-    
     xil_printf("[ACMD41] Kart baslatiliyor (Busy Loop)...\r\n");
-    
-    // Gecikme: CMD8'den hemen sonra kartı yormamak için biraz bekle
     delay_loops(50000); 
     
-    init_tries = 200; // Deneme sayısını artırdık
+    init_tries = 200;
     
     while (init_tries > 0) {
         
-        // --- A) CMD55 Gönder (APP_CMD) ---
+        // --- A) CMD55 Gönder ---
         sdio->sd_data = 0;
         sdio->sd_cmd = SDIO_CMD_FLAG | SDIO_R1 | SDIO_ERR_CLR | 55;
         
-        // Bekle
         do { reg_val = sdio->sd_cmd; } while (reg_val & SDIO_BUSY);
         
-        // CMD55 Hata kontrolü
         if (reg_val & SDIO_ERR) {
-            // HATA DETAYI YAZDIRMA
-            // Hata olsa bile "continue" diyerek tekrar deneyeceğiz.
-            // SD kartlar ilk açılışta bazen komut kaçırabilir.
+            // CMD55 R1 döndürür, bu yüzden burada CRC hatası OLMAMALI.
+            // Eğer Shift=0 yaptıktan sonra hala burada hata alıyorsanız donanımsal
+            // pull-up dirençlerinizi kontrol edin.
             xil_printf("UYARI: CMD55 Hatasi (Reg: 0x%08x). Tekrar deneniyor...\r\n", reg_val);
-            
             init_tries--;
-            delay_loops(10000); 
-            continue; // Döngünün başına dön ve tekrar dene
+            delay_loops(10000);
+            continue;
         }
 
         // --- B) ACMD41 Gönder ---
-        sdio->sd_data = ACMD41_ARG; // HCS=1
+        sdio->sd_data = ACMD41_ARG; 
         sdio->sd_cmd = SDIO_CMD_FLAG | SDIO_R1 | SDIO_ERR_CLR | 41;
         
-        // Bekle
         do { reg_val = sdio->sd_cmd; } while (reg_val & SDIO_BUSY);
         
-        // ACMD41 için hata kontrolü (Opsiyonel, R3 yanıtı bazen CRC hatası gibi görünebilir)
-        // Biz doğrudan içeriğe bakacağız.
-
+        // DÜZELTME 2: ACMD41 (R3) için CRC Hatasını Yoksay
+        // Reg değerindeki CC (Command Error Code) bitlerine bakıyoruz (Bit 19-18)
+        uint32_t cmd_error_code = (reg_val >> 18) & 0x03;
+        
+        // Eğer Hata biti varsa VE Hata sebebi CRC (2) değilse, gerçek bir hatadır.
+        if ((reg_val & SDIO_ERR) && (cmd_error_code != 2)) {
+             xil_printf("HATA: ACMD41 Kritik Hata (Reg: 0x%08x)\r\n", reg_val);
+             return -7;
+        }
+        
+        // Eğer CRC hatası varsa bile (veya hiç hata yoksa) datayı oku.
+        // Çünkü R3 yanıtının CRC'si her zaman geçersizdir.
         response = sdio->sd_data;
         
         // Bit 31 (Busy) kontrolü
         if (response & 0x80000000) {
-            xil_printf("TAMAMLANDI! Kart Hazir.\r\n");
-            xil_printf("OCR: 0x%08x ", response);
-            if (response & 0x40000000) {
-                xil_printf("(High Capacity - SDHC)\r\n");
-            } else {
-                xil_printf("(Standard Capacity - SDSC)\r\n");
-            }
-            return 0; // Başarı!
+            xil_printf("TAMAMLANDI! Kart Hazir. OCR: 0x%08x\r\n", response);
+            return 0;
         }
         
-        // Kart henüz hazır değilse biraz bekle
         init_tries--;
         delay_loops(5000); 
     }
 
-    xil_printf("\r\nHATA: Kart hazir olamadi (Timeout)!\r\n");
     return -8;
 }
 int main() {
