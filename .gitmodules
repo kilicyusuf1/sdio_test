@@ -1,0 +1,3 @@
+[submodule "hw/submodule/sdio"]
+	path = hw/submodule/sdio
+	url = https://github.com/kilicyusuf1/sdspi.git
