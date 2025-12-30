@@ -4,12 +4,9 @@
 #include "xil_printf.h"
 
 // --- IP Adresi ---
-// xparameters.h'daki IP isminizi kontrol edin
-#ifndef XPAR_SDIO_TOP_0_BASEADDR
-    #define SDIO_BASE_ADDR 0x44A00000 
-#else
-    #define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
-#endif
+
+#define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
+
 
 // --- Register Yapısı ---
 typedef struct {
