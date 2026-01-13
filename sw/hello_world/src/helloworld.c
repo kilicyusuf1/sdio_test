@@ -4,17 +4,16 @@
 #include "sdiodrv.h"  // Kendi header dosyamız
 
 // IP Adresi (xparameters.h'dan kontrol edin)
-#ifndef XPAR_SDIO_TOP_0_BASEADDR
-    #define SDIO_BASE_ADDR 0x44A00000 
-#else
-    #define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
-#endif
+
+#define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
 
 // Veri okumak için RAM'de yer ayıralım
 char test_buffer[512];
 
 int main() {
     xil_printf("\r\n--- SDIO Sürücü Testi ---\r\n");
+
+volatile uint32_t *sd = (volatile uint32_t*)SDIO_BASE_ADDR;
 
     // 1. Donanım işaretçisini oluştur
     SDIO *hw_ptr = (SDIO *)SDIO_BASE_ADDR;
