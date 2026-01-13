@@ -71,6 +71,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+#include "xil_io.h"
 #include <stdlib.h>
 #include <stdint.h>
 //typedef	uint8_t  BYTE;
@@ -94,7 +95,7 @@
 #define	txstr(A)		print(A)
 #define	txhex(A)		xil_printf("%08x", A)
 #define	txdecimal(A)	xil_printf("%d", A)
-#define	STDIO_DEBUG
+#define	STDIO_DEBUG 
 #else
 // extern	void	txstr(const char *);
 // extern	void	txhex(unsigned);
@@ -130,7 +131,7 @@
 //	SDINFO: Set to turns on a verbose reporting.  This will dump values of
 //		registers, together with their meanings.  When reading,
 //		it will dump sectors read.  Often requires SDDEBUG.
-static	const int	SDINFO = 0, SDDEBUG = 0;
+static	const int	SDINFO = 1, SDDEBUG = 1;
 // }}}
 // Compile time DMA controls
 // {{{
@@ -555,6 +556,15 @@ uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	dev->d_dev->sd_cmd = SDIO_READREG+8;
 
 	sdio_wait_while_busy(dev);
+
+	#define SD_CMD_OFF  0x00
+	#define SD_DATA_OFF 0x04
+
+	uint32_t raw_cmd  = Xil_In32((uintptr_t)dev->d_dev + SD_CMD_OFF);
+	uint32_t raw_data = Xil_In32((uintptr_t)dev->d_dev + SD_DATA_OFF);
+
+	txstr("RAW CMD8: CMD="); txhex(raw_cmd);
+	txstr(" DATA="); txhex(raw_data); txstr("\n");
 
 	c = dev->d_dev->sd_cmd;
 	r = dev->d_dev->sd_data;
