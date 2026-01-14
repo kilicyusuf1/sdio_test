@@ -237,7 +237,7 @@ static	const	uint32_t
 		SDIOCK_SDR50  = SDIOCK_100MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
 		SDIOCK_SDR104 = SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
 		//
-		SPEED_SLOW   = SDIOCK_400KHZ,
+		SPEED_SLOW   = SDIOCK_100KHZ, //It was 400khz, i changed it to 100khz yusuf
 		SPEED_DEFAULT= SDIOCK_DS,
 		SPEED_FAST   = SDIOCK_HS,
 		//
@@ -547,7 +547,7 @@ void	sdio_unselect_card(SDIODRV *dev) {			// CMD7
 	dev->d_dev->sd_cmd = SDIO_ERR | SDIO_NULLCMD;
 }
 // }}}
-
+/*
 uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	// {{{
 	unsigned pre, imm, post;
@@ -592,12 +592,14 @@ uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	return r;
 }
 // }}}
+*/
 
-
-/*
 uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	// {{{
 	unsigned	c, r;
+
+	uint32_t phy_pre1 = dev->d_dev->sd_phy;
+	txstr("[CMD8] pre  sd_phy="); txhex(phy_pre1); txstr("\n");
 
 	dev->d_dev->sd_data = ifcond;
 	dev->d_dev->sd_cmd = SDIO_READREG+8;
@@ -616,7 +618,7 @@ uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	return r;
 }
 // }}}
-*/
+
 uint32_t sdio_send_op_cond(SDIODRV *dev, uint32_t opcond) { // ACMD41
 	// {{{
 	unsigned	c, r;
@@ -1747,10 +1749,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 
 	// Get the IF CONDition
 	// {{{
-	// A/B test: Force PHY to the known-working (ham) value right before CMD8
-	txstr("[FORCE] pre  sd_phy="); txhex(dv->d_dev->sd_phy); txstr("\n");
-	dv->d_dev->sd_phy = 0xC98000FC;
-	txstr("[FORCE] post sd_phy="); txhex(dv->d_dev->sd_phy); txstr("\n");
+
 	ifcond = sdio_send_if_cond(dv,0x01a5);
 
 	hcs = dv->d_dev->sd_cmd;
@@ -1845,8 +1844,11 @@ SDIODRV *sdio_init(SDIO *dev) {
 	if ((dv->d_dev->sd_phy & SDPHY_1P8VSPT)
 			&& (dv->d_OCR & 0x40000000)	// Must support CCS
 			&& (dv->d_OCR & S18R)) {
-		// txstr("Switching to 1.8V\n");
+		txstr("Switching to 1.8V\n");
 		// CMD19, tuning block to determine sample point
+		txstr("[1P8] phy="); txhex(dv->d_dev->sd_phy);
+		txstr(" OCR="); txhex(dv->d_OCR);
+		txstr("\n");
 		sdio_send_voltage_switch(dv);	// CMD 11
 	}
 	// }}}
