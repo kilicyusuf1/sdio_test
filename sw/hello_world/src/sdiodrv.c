@@ -550,22 +550,36 @@ void	sdio_unselect_card(SDIODRV *dev) {			// CMD7
 
 uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	// {{{
-	unsigned	c, r;
+	unsigned pre, imm, post;
+	unsigned c, r;
 
+	// (Önerilen) E latch temizleme denemesi: write-1-to-clear
+	// E bitin yerleşimine göre (senin decode'unda E=bit15)
+	dev->d_dev->sd_cmd = (1u << 15);
+
+	// PRE: CMD8'e başlamadan önce sd_cmd snapshot
+	pre = dev->d_dev->sd_cmd;
+	txstr("[CMD8] pre  sd_cmd="); txhex(pre); txstr("\n");
+	uint32_t phy_pre = dev->d_dev->sd_phy;
+	txstr("[CMD8] pre  sd_phy="); txhex(phy_pre); txstr("\n");
+	// Argümanı yaz
 	dev->d_dev->sd_data = ifcond;
-	dev->d_dev->sd_cmd = SDIO_READREG+8;
 
+	// CMD8'i başlat
+	dev->d_dev->sd_cmd = SDIO_READREG + 8;
+
+	// IMMEDIATE: komutu yazar yazmaz sd_cmd snapshot (busy beklemeden)
+	imm = dev->d_dev->sd_cmd;
+	txstr("[CMD8] imm  sd_cmd="); txhex(imm); txstr("\n");
+
+	// Busy bitini bekle (zaten fonksiyon var)
 	sdio_wait_while_busy(dev);
 
-	#define SD_CMD_OFF  0x00
-	#define SD_DATA_OFF 0x04
+	// POST: busy bittikten sonra sd_cmd snapshot
+	post = dev->d_dev->sd_cmd;
+	txstr("[CMD8] post sd_cmd="); txhex(post); txstr("\n");
 
-	uint32_t raw_cmd  = Xil_In32((uintptr_t)dev->d_dev + SD_CMD_OFF);
-	uint32_t raw_data = Xil_In32((uintptr_t)dev->d_dev + SD_DATA_OFF);
-
-	txstr("RAW CMD8: CMD="); txhex(raw_cmd);
-	txstr(" DATA="); txhex(raw_data); txstr("\n");
-
+	// Mevcut sürücünün yaptığı gibi oku
 	c = dev->d_dev->sd_cmd;
 	r = dev->d_dev->sd_data;
 
@@ -579,6 +593,30 @@ uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 }
 // }}}
 
+
+/*
+uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
+	// {{{
+	unsigned	c, r;
+
+	dev->d_dev->sd_data = ifcond;
+	dev->d_dev->sd_cmd = SDIO_READREG+8;
+
+	sdio_wait_while_busy(dev);
+
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+
+	if (SDDEBUG && SDINFO) {
+		txstr("CMD8:    SEND_IF_COND ("); txhex(ifcond); txstr(")\n");
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		txstr("  Data:    "); txhex(r); txstr("\n");
+	}
+
+	return r;
+}
+// }}}
+*/
 uint32_t sdio_send_op_cond(SDIODRV *dev, uint32_t opcond) { // ACMD41
 	// {{{
 	unsigned	c, r;
@@ -1695,6 +1733,12 @@ SDIODRV *sdio_init(SDIO *dev) {
 			// Raw front end I/O
 			clk_phase = 16 << 16;
 		}
+		if (SDDEBUG && SDINFO) {
+			txstr("PHY="); txhex(phy);
+			txstr(" SERDES="); txhex((phy & 0x010000) ? 1 : 0);
+			txstr(" DDR=");    txhex((phy & 0x040000) ? 1 : 0);
+			txstr("\n");
+		}
 		phy = (dv->d_dev->sd_phy & (~SDPHY_PHASEMSK)) | clk_phase;
 		dv->d_dev->sd_phy = phy;
 	}
@@ -1703,6 +1747,10 @@ SDIODRV *sdio_init(SDIO *dev) {
 
 	// Get the IF CONDition
 	// {{{
+	// A/B test: Force PHY to the known-working (ham) value right before CMD8
+	txstr("[FORCE] pre  sd_phy="); txhex(dv->d_dev->sd_phy); txstr("\n");
+	dv->d_dev->sd_phy = 0xC98000FC;
+	txstr("[FORCE] post sd_phy="); txhex(dv->d_dev->sd_phy); txstr("\n");
 	ifcond = sdio_send_if_cond(dv,0x01a5);
 
 	hcs = dv->d_dev->sd_cmd;
