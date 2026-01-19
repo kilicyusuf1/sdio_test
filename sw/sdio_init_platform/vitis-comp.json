@@ -1,10 +1,10 @@
 {
-  "name": "sdio_platform",
+  "name": "sdio_init_platform",
   "type": "PLATFORM",
   "configuration": {
     "description": "",
     "xsa": "C:\\Users\\ykili\\Desktop\\sdio_test\\hw\\design_1_wrapper.xsa",
-    "xsaPathInPlatform": "sdio_platform\\hw\\design_1_wrapper.xsa",
+    "xsaPathInPlatform": "sdio_init_platform\\hw\\design_1_wrapper.xsa",
     "emulationXsa": "",
     "emulationXsaPathInPlatform": "",
     "isCustomFSBL": false,

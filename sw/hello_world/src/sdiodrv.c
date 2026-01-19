@@ -73,12 +73,12 @@
 //
 #include <stdlib.h>
 #include <stdint.h>
-typedef	uint8_t  BYTE;
-typedef	uint16_t WORD;
-typedef	uint32_t DWORD, LBA_t, UINT;
-#include <diskio.h>
+//typedef	uint8_t  BYTE;
+//typedef	uint16_t WORD;
+//typedef	uint32_t DWORD, LBA_t, UINT;
+//#include <diskio.h>
 #include "sdiodrv.h"
-
+#include "xil_printf.h"
 // tx* -- debugging output functions
 // {{{
 // Debugging isn't quite as simple as using printf(), since I want to guarantee
@@ -90,10 +90,10 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 #ifndef	TXFNS_H
 #include <stdio.h>
 
-#define	txchr(A)		putchar(A)
-#define	txstr(A)		fputs(A, stdout)
-#define	txhex(A)		printf("%08x", A)
-#define	txdecimal(A)		printf("%d", A)
+#define	txchr(A)		outbyte(A)
+#define	txstr(A)		print(A)
+#define	txhex(A)		xil_printf("%08x", A)
+#define	txdecimal(A)	xil_printf("%d", A)
 #define	STDIO_DEBUG
 #else
 // extern	void	txstr(const char *);
@@ -142,7 +142,7 @@ static	const int	SDINFO = 0, SDDEBUG = 0;
 #ifdef	OPT_SDIODMA
 static	const	int	SDEXTDMA=0;
 #else
-static	const	int	SDEXTDMA=1;
+static	const	int	SDEXTDMA=0;
 #endif
 // }}}
 
@@ -162,7 +162,7 @@ static	const int	SDMULTI = 1;
 #ifndef	CLEAR_DCACHE
 #define	CLEAR_DCACHE
 #endif
-
+/*
 typedef	struct	SDIODRV_S {
 	SDIO		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
@@ -170,7 +170,7 @@ typedef	struct	SDIODRV_S {
 	uint16_t	d_RCA;
 	uint32_t	d_sector_count, d_block_size;
 } SDIODRV;
-
+*/
 static	const	uint32_t
 		// Command bit enumerations
 		SDIO_NULLCMD  = 0x00000080,
@@ -702,7 +702,6 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 		unsigned vld = 1;
 		for(int k=0; k<16; k++)
 			rxv[k] = dev->d_dev->sd_fifa;
-		for(int k=0; k<16; k++) {
 		for(int k=0; (k<16) && vld; k++) {
 			unsigned	r;
 			r = rxv[k];
@@ -2275,13 +2274,13 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 		dev->d_dev->sd_data = sector*512;
 
 	// Check for the DMA's existence
-	dev->d_dev->sd_dma_length = count;
-	if (count == dev->d_dev->sd_dma_length) { // DMA is present
+	dev->d_dev->sd_dma_len = count;
+	if (count == dev->d_dev->sd_dma_len) { // DMA is present
 		// {{{
 
 		// Set up the DMA
 		// {{{
-		dev->d_dev->sd_dma_addr = (char *)buf;
+		dev->d_dev->sd_dma_addr_l = (char *)buf;
 		// Always transfer in units of 512 bytes
 		// dev->d_dev->sd_dma_length = count;
 		//	Already set above, in order to determine if the DMA
@@ -2493,11 +2492,11 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 		dev->d_dev->sd_data = sector*512;
 	// }}}
 
-	dev->d_dev->sd_dma_length = count;
-	if (count == dev->d_dev->sd_dma_length) {
+	dev->d_dev->sd_dma_len = count;
+	if (count == dev->d_dev->sd_dma_len) {
 		// Activate the SDIO DMA
 		// {{{
-		dev->d_dev->sd_dma_addr = buf;
+		dev->d_dev->sd_dma_addr_l = buf;
 		dev->d_dev->sd_cmd = SDIO_ERR | SDIO_READDMA;
 		// }}}
 	} else {
