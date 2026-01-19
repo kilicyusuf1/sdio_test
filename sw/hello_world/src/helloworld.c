@@ -2,13 +2,16 @@
 #include "xparameters.h"
 #include "xil_printf.h"
 #include "sdiodrv.h"  // Kendi header dosyamız
+#include <string.h>
+#include "xil_cache.h"
 
 // IP Adresi (xparameters.h'dan kontrol edin)
 
 #define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
 
-// Veri okumak için RAM'de yer ayıralım
-char test_buffer[512];
+// 32-byte aligned buffers (cacheline aligned)
+static unsigned char wr_buf[512] __attribute__((aligned(32)));
+static unsigned char rd_buf[512] __attribute__((aligned(32)));
 
 int main() {
     xil_printf("\r\n--- SDIO Sürücü Testi ---\r\n");
@@ -38,27 +41,68 @@ volatile uint32_t *sd = (volatile uint32_t*)SDIO_BASE_ADDR;
     xil_printf("Boyut: ~%d MB\r\n", size_mb);
 
 
-    // 4. Okuma Testi (Sektör 0 - MBR/Boot Sector)
-    xil_printf("Sektor 0 okunuyor...\r\n");
-    
-    // sdio_read(Driver, SektörNo, Adet, Buffer)
-    int status = sdio_read(sd_card, 0, 1, test_buffer);
+    // --- WRITE + READBACK TEST ---
+    uint32_t test_lba;
+    if (sd_card->d_sector_count > 4096)
+        test_lba = sd_card->d_sector_count - 2048; // sondan güvenli bir yer
+    else
+        test_lba = 1024;
 
-    if (status == RES_OK) {
-        xil_printf("Okuma Tamamlandi. İlk 16 Byte:\r\n");
-        for(int i=0; i<16; i++) {
-            xil_printf("%02X ", (unsigned char)test_buffer[i]);
-        }
-        xil_printf("\r\n");
-        
-        // Son iki byte kontrolü (Genelde 0x55 0xAA olur)
-        xil_printf("Sektor Sonu İmzasi: %02X %02X\r\n", 
-                   (unsigned char)test_buffer[510], 
-                   (unsigned char)test_buffer[511]);
-                   
-    } else {
-        xil_printf("HATA: Okuma yapilamadi! Hata Kodu: %d\r\n", status);
+    xil_printf("Yazma testi: LBA=%lu (Dikkat: veri overwrite!)\r\n", (unsigned long)test_lba);
+
+    // Pattern hazırla
+    memset(wr_buf, 0, sizeof(wr_buf));
+    for (int i = 0; i < 512; i++)
+        wr_buf[i] = (unsigned char)(i ^ 0xA5);
+
+    wr_buf[0]   = 'S';
+    wr_buf[1]   = 'D';
+    wr_buf[2]   = 'W';
+    wr_buf[3]   = 'R';
+    wr_buf[508] = 0xDE;
+    wr_buf[509] = 0xAD;
+    wr_buf[510] = 0xBE;
+    wr_buf[511] = 0xEF;
+
+    // Cache flush (yazmadan önce)
+    Xil_DCacheFlushRange((UINTPTR)wr_buf, 512);
+
+    // Yaz
+    int wstat = sdio_write(sd_card, test_lba, 1, (char*)wr_buf);
+    if (wstat != RES_OK) {
+        xil_printf("HATA: Yazma basarisiz! Kod=%d\r\n", wstat);
+        return -1;
     }
+    xil_printf("Yazma OK.\r\n");
+
+    // Oku
+    memset(rd_buf, 0, sizeof(rd_buf));
+    Xil_DCacheFlushRange((UINTPTR)rd_buf, 512);
+
+    int rstat = sdio_read(sd_card, test_lba, 1, (char*)rd_buf);
+    if (rstat != RES_OK) {
+        xil_printf("HATA: Readback basarisiz! Kod=%d\r\n", rstat);
+        return -1;
+    }
+
+    // Cache invalidate (okumadan sonra CPU doğru veriyi görsün)
+    Xil_DCacheInvalidateRange((UINTPTR)rd_buf, 512);
+
+    // Karşılaştır
+    int diff = memcmp(wr_buf, rd_buf, 512);
+    if (diff == 0) {
+        xil_printf("READBACK OK: Yazilan veri birebir dogrulandi.\r\n");
+        xil_printf("Imza son 4 byte: %02X %02X %02X %02X\r\n",
+            rd_buf[508], rd_buf[509], rd_buf[510], rd_buf[511]);
+    } else {
+        xil_printf("READBACK FAIL: memcmp farkli!\r\n");
+        xil_printf("Ilk 16 byte:\r\n");
+        for (int i = 0; i < 16; i++) xil_printf("%02X ", rd_buf[i]);
+        xil_printf("\r\nSon 16 byte:\r\n");
+        for (int i = 496; i < 512; i++) xil_printf("%02X ", rd_buf[i]);
+        xil_printf("\r\n");
+    }
+
 
     return 0;
 }
