@@ -9,9 +9,11 @@
 
 #define SDIO_BASE_ADDR XPAR_SDIO_TOP_0_BASEADDR
 
-// 32-byte aligned buffers (cacheline aligned)
-static unsigned char wr_buf[512] __attribute__((aligned(32)));
-static unsigned char rd_buf[512] __attribute__((aligned(32)));
+#define NBLK 16
+
+static unsigned char wrm[512*NBLK] __attribute__((aligned(32)));
+static unsigned char rdm[512*NBLK] __attribute__((aligned(32)));
+
 
 int main() {
     xil_printf("\r\n--- SDIO Sürücü Testi ---\r\n");
@@ -41,67 +43,64 @@ volatile uint32_t *sd = (volatile uint32_t*)SDIO_BASE_ADDR;
     xil_printf("Boyut: ~%d MB\r\n", size_mb);
 
 
-    // --- WRITE + READBACK TEST ---
-    uint32_t test_lba;
-    if (sd_card->d_sector_count > 4096)
-        test_lba = sd_card->d_sector_count - 2048; // sondan güvenli bir yer
-    else
-        test_lba = 1024;
+    // --- MULTI-BLOCK WRITE + READBACK TEST ---
+uint32_t lba = (sd_card->d_sector_count > 8192) ?
+               (sd_card->d_sector_count - 4096) : 2048;
 
-    xil_printf("Yazma testi: LBA=%lu (Dikkat: veri overwrite!)\r\n", (unsigned long)test_lba);
+xil_printf("MB TEST: LBA=%lu count=%d\r\n", (unsigned long)lba, NBLK);
 
-    // Pattern hazırla
-    memset(wr_buf, 0, sizeof(wr_buf));
+// 1) Yazma buffer'ini doldur (her blok farklı pattern + imza)
+for (int b = 0; b < NBLK; b++) {
+    unsigned char *p = &wrm[512*b];
     for (int i = 0; i < 512; i++)
-        wr_buf[i] = (unsigned char)(i ^ 0xA5);
+        p[i] = (unsigned char)((i + b) ^ 0x5A);
 
-    wr_buf[0]   = 'S';
-    wr_buf[1]   = 'D';
-    wr_buf[2]   = 'W';
-    wr_buf[3]   = 'R';
-    wr_buf[508] = 0xDE;
-    wr_buf[509] = 0xAD;
-    wr_buf[510] = 0xBE;
-    wr_buf[511] = 0xEF;
+    // Imza: ilk 4 byte blok index'i taşır
+    p[0] = 'M';
+    p[1] = 'B';
+    p[2] = 'W';
+    p[3] = (unsigned char)b;
 
-    // Cache flush (yazmadan önce)
-    Xil_DCacheFlushRange((UINTPTR)wr_buf, 512);
+    // Son 2 byte marker
+    p[510] = 0x55;
+    p[511] = 0xAA;
+}
 
-    // Yaz
-    int wstat = sdio_write(sd_card, test_lba, 1, (char*)wr_buf);
-    if (wstat != RES_OK) {
-        xil_printf("HATA: Yazma basarisiz! Kod=%d\r\n", wstat);
-        return -1;
-    }
-    xil_printf("Yazma OK.\r\n");
+memset(rdm, 0, sizeof(rdm));
 
-    // Oku
-    memset(rd_buf, 0, sizeof(rd_buf));
-    Xil_DCacheFlushRange((UINTPTR)rd_buf, 512);
+// Cache yönetimi
+Xil_DCacheFlushRange((UINTPTR)wrm, 512*NBLK);
+Xil_DCacheFlushRange((UINTPTR)rdm, 512*NBLK);
 
-    int rstat = sdio_read(sd_card, test_lba, 1, (char*)rd_buf);
-    if (rstat != RES_OK) {
-        xil_printf("HATA: Readback basarisiz! Kod=%d\r\n", rstat);
-        return -1;
-    }
+// 2) Multi-block yaz
+int ws = sdio_write(sd_card, lba, NBLK, (char*)wrm);
+xil_printf("MB write status=%d\r\n", ws);
+if (ws != RES_OK) return -1;
 
-    // Cache invalidate (okumadan sonra CPU doğru veriyi görsün)
-    Xil_DCacheInvalidateRange((UINTPTR)rd_buf, 512);
+// 3) Multi-block oku
+int rs = sdio_read(sd_card, lba, NBLK, (char*)rdm);
+xil_printf("MB read  status=%d\r\n", rs);
+if (rs != RES_OK) return -1;
 
-    // Karşılaştır
-    int diff = memcmp(wr_buf, rd_buf, 512);
-    if (diff == 0) {
-        xil_printf("READBACK OK: Yazilan veri birebir dogrulandi.\r\n");
-        xil_printf("Imza son 4 byte: %02X %02X %02X %02X\r\n",
-            rd_buf[508], rd_buf[509], rd_buf[510], rd_buf[511]);
-    } else {
-        xil_printf("READBACK FAIL: memcmp farkli!\r\n");
-        xil_printf("Ilk 16 byte:\r\n");
-        for (int i = 0; i < 16; i++) xil_printf("%02X ", rd_buf[i]);
-        xil_printf("\r\nSon 16 byte:\r\n");
-        for (int i = 496; i < 512; i++) xil_printf("%02X ", rd_buf[i]);
-        xil_printf("\r\n");
-    }
+Xil_DCacheInvalidateRange((UINTPTR)rdm, 512*NBLK);
+
+// 4) Doğrula
+int diff = memcmp(wrm, rdm, 512*NBLK);
+int bad = 0;
+
+for (int b = 0; b < NBLK; b++) {
+    unsigned char *p = &rdm[512*b];
+    if (!(p[0]=='M' && p[1]=='B' && p[2]=='W' && p[3]==(unsigned char)b))
+        bad++;
+    if (!(p[510]==0x55 && p[511]==0xAA))
+        bad++;
+}
+
+if (diff == 0 && bad == 0) {
+    xil_printf("MB READBACK OK (%d blocks)\r\n", NBLK);
+} else {
+    xil_printf("MB READBACK FAIL diff=%d bad=%d\r\n", diff, bad);
+}
 
 
     return 0;
