@@ -1,4 +1,0 @@
-domain_path: C:\Users\ykili\Desktop\sdio_test\sw\sdio_init_platform\export\sdio_init_platform\sw\standalone_microblaze_0
-app_src_dir: C:\Xilinx\2025.1\Vitis\data\embeddedsw\lib\sw_apps\hello_world
-template: hello_world
-lang: c
