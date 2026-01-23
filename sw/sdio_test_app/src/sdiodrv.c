@@ -131,7 +131,7 @@
 //	SDINFO: Set to turns on a verbose reporting.  This will dump values of
 //		registers, together with their meanings.  When reading,
 //		it will dump sectors read.  Often requires SDDEBUG.
-static	const int	SDINFO = 1, SDDEBUG = 0;
+static	const int	SDINFO = 1, SDDEBUG = 1;
 // }}}
 // Compile time DMA controls
 // {{{
@@ -835,6 +835,14 @@ void	sdio_send_app_cmd(SDIODRV *dev) {  // CMD 55
 	dev->d_dev->sd_cmd = (SDIO_ERR|SDIO_READREG)+55;
 
 	sdio_wait_while_busy(dev);
+
+	unsigned r = dev->d_dev->sd_data;
+
+	txstr("  R1="); txhex(r); txstr("\n");
+	txstr("  APP_CMD(bit5)="); txhex((r & 0x20) ? 1 : 0);
+	txstr("  IDLE(bit0)=");    txhex((r & 0x01) ? 1 : 0);
+	txstr("  ILLEGAL(bit2)="); txhex((r & 0x04) ? 1 : 0);
+	txstr("\n");
 
 	if (SDDEBUG && SDINFO) {
 		unsigned	c, r;
@@ -1799,8 +1807,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 		op_cond_query &= 0x0ff8000;
 
 		// If we support 1.8V, let's tell the card that
-		if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
-			op_cond_query |= S18R | XPC;
+		//if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
+		//	op_cond_query |= S18R | XPC;
 
 		// Note that an HCS capable card will *not* return 0x40000000
 		// on a Query.  We know it might be HCS because it replied to
@@ -1829,11 +1837,32 @@ SDIODRV *sdio_init(SDIO *dev) {
 			free(dv);
 			return NULL;
 		}
-
+		/*
 		do {
 			// By spec, this may take up to a second
 			op_cond = sdio_send_op_cond(dv, op_cond_query);
 		} while(0 == (op_cond & 0x80000000));
+		*/
+		int tries = 0;
+		do {
+			op_cond = sdio_send_op_cond(dv, op_cond_query);
+			tries++;
+			if ((tries % 50) == 0) {
+				txstr("[ACMD41] tries="); txhex(tries);
+				txstr(" ocr="); txhex(op_cond);
+				txstr(" q="); txhex(op_cond_query);
+				txstr("\n");
+			}
+			if (tries > 200) {
+				txstr("ACMD41 TIMEOUT ocr="); txhex(op_cond); txstr("\n");
+				free(dv);
+				return NULL;
+			}
+		} while(0 == (op_cond & 0x80000000));
+
+
+
+
 	} if (SDINFO)
 		sdio_dump_ocr(dv);
 	// }}}
