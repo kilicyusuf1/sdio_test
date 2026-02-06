@@ -4,6 +4,7 @@
 #include "sdiodrv.h"  // Kendi header dosyamız
 #include <string.h>
 #include "xil_cache.h"
+#include "sleep.h"
 
 // IP Adresi (xparameters.h'dan kontrol edin)
 
@@ -16,32 +17,24 @@ static unsigned char rdm[512*NBLK] __attribute__((aligned(32)));
 
 
 int main() {
-    xil_printf("\r\n--- SDIO Sürücü Testi ---\r\n");
+    
+xil_printf("\r\n--- SDIO Driver Test ---\r\n");
 
 volatile uint32_t *sd = (volatile uint32_t*)SDIO_BASE_ADDR;
-
-    // 1. Donanım işaretçisini oluştur
     SDIO *hw_ptr = (SDIO *)SDIO_BASE_ADDR;
 
-    // 2. Sürücüyü Başlat (Init)
-    // Bu fonksiyon ACMD41, Voltaj, Bus Width gibi ayarları otomatik yapar.
-    xil_printf("Kart Init baslatiliyor...\r\n");
+    xil_printf("Starting Standard Init...\r\n");
     SDIODRV *sd_card = sdio_init(hw_ptr);
 
     if (sd_card == NULL) {
-        xil_printf("HATA: Init basarisiz! (Kablo, Güç veya Bitstream kontrolü yapin)\r\n");
+        xil_printf("HATA: Init basarisiz!\r\n");
         return -1;
     }
 
-    // 3. Kart Bilgilerini Göster
-    xil_printf("INIT BASARILI!\r\n");
-    xil_printf("Kapasite: %d Sektor\r\n", sd_card->d_sector_count);
-    
-    // Kapasite hesabı (MB cinsinden)
-    // Sektör Sayısı * 512 Byte / 1024 / 1024
-    int size_mb = (sd_card->d_sector_count / 2048); 
-    xil_printf("Boyut: ~%d MB\r\n", size_mb);
-
+    xil_printf("INIT SUCCESSFUL!\r\n");
+    xil_printf("Capacity: %d Sectors\r\n", (int)sd_card->d_sector_count);
+    int size_mb = (int)(sd_card->d_sector_count / 2048); 
+    xil_printf("Size: ~%d MB\r\n", size_mb);
 
     // --- MULTI-BLOCK WRITE + READBACK TEST ---
 uint32_t lba = (sd_card->d_sector_count > 8192) ?

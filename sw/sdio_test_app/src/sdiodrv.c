@@ -80,6 +80,7 @@
 //#include <diskio.h>
 #include "sdiodrv.h"
 #include "xil_printf.h"
+#include "sleep.h"
 // tx* -- debugging output functions
 // {{{
 // Debugging isn't quite as simple as using printf(), since I want to guarantee
@@ -835,14 +836,6 @@ void	sdio_send_app_cmd(SDIODRV *dev) {  // CMD 55
 	dev->d_dev->sd_cmd = (SDIO_ERR|SDIO_READREG)+55;
 
 	sdio_wait_while_busy(dev);
-
-	unsigned r = dev->d_dev->sd_data;
-
-	txstr("  R1="); txhex(r); txstr("\n");
-	txstr("  APP_CMD(bit5)="); txhex((r & 0x20) ? 1 : 0);
-	txstr("  IDLE(bit0)=");    txhex((r & 0x01) ? 1 : 0);
-	txstr("  ILLEGAL(bit2)="); txhex((r & 0x04) ? 1 : 0);
-	txstr("\n");
 
 	if (SDDEBUG && SDINFO) {
 		unsigned	c, r;
@@ -1753,6 +1746,56 @@ SDIODRV *sdio_init(SDIO *dev) {
 		dv->d_dev->sd_phy = phy;
 	}
 
+	// 1. KART TAKILANA KADAR BEKLE (POLLING)
+    // PresentN (Bit 19): 1 = Kart YOK, 0 = Kart VAR
+    if (dev->sd_cmd & SDIO_PRESENTN) {
+        xil_printf("\r\n[Driver] No SD Card Detected! Waiting...\r\n");
+        
+        // Debug: Beklemeden önceki durumu görelim
+        xil_printf("DEBUG: Wait Loop Start CMD_REG: 0x%08X\r\n", dev->sd_cmd);
+
+        while (dev->sd_cmd & SDIO_PRESENTN) {
+             usleep(10000); // 10ms bekle
+        }
+        
+        xil_printf("[Driver] Card Detected! Stabilizing (20ms)...\r\n");
+        usleep(20000); // Debounce
+    } else {
+        xil_printf("[Driver] Card already present.\r\n");
+    }
+
+    // 2. REMOVED BAYRAĞINI TEMİZLE (NULLCMD ile)
+    // Bunu yapmadan önce ve sonra Debug bilgilerini detaylı basalım.
+    
+    xil_printf("[Driver] Clearing Removed Flag (0x00040080)...\r\n");
+    dev->sd_cmd = SDIO_REMOVED | SDIO_NULLCMD;
+
+    // 3. KRİTİK BEKLEME (1ms+)
+    xil_printf("[Driver] Waiting 5ms for Card Ramp-up...\r\n");
+    usleep(5000); 
+
+    // 4. DETAYLI DURUM RAPORU (İstediğin Kısım)
+    uint32_t val_final = dev->sd_cmd;
+    
+    xil_printf("\r\n--- [Driver] STATUS CHECK (Pre-Idle) ---\r\n");
+    xil_printf("FULL CMD REG : 0x%08X\r\n", val_final);
+    xil_printf(" -> Removed  (Bit 18) : %d  (Must be 0)\r\n", (val_final & SDIO_REMOVED) ? 1 : 0);
+    xil_printf(" -> PresentN (Bit 19) : %d  (Must be 0)\r\n", (val_final & SDIO_PRESENTN) ? 1 : 0);
+    xil_printf("----------------------------------------\r\n\r\n");
+
+    // ==================================================================
+    // STANDART INIT (CMD0 ile başlar)
+    // ==================================================================
+    
+	uint32_t val = dev->sd_cmd;
+    uint32_t phy_val = dev->sd_phy; // <--- YENİ: PHY değerini oku
+
+    // İkisini birden bas
+    xil_printf("DEBUG STATUS before GO_IDLE:\r\n");
+    xil_printf(" -> CMD REG: 0x%08X\r\n", val);
+    xil_printf(" -> PHY REG: 0x%08X\r\n", phy_val);
+
+    xil_printf("[Driver] Sending CMD0 (GO_IDLE)...\r\n");
 	sdio_go_idle(dv);
 
 	// Get the IF CONDition
@@ -1807,8 +1850,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 		op_cond_query &= 0x0ff8000;
 
 		// If we support 1.8V, let's tell the card that
-		//if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
-		//	op_cond_query |= S18R | XPC;
+		if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
+			op_cond_query |= S18R | XPC;
 
 		// Note that an HCS capable card will *not* return 0x40000000
 		// on a Query.  We know it might be HCS because it replied to
@@ -1837,32 +1880,11 @@ SDIODRV *sdio_init(SDIO *dev) {
 			free(dv);
 			return NULL;
 		}
-		/*
+
 		do {
 			// By spec, this may take up to a second
 			op_cond = sdio_send_op_cond(dv, op_cond_query);
 		} while(0 == (op_cond & 0x80000000));
-		*/
-		int tries = 0;
-		do {
-			op_cond = sdio_send_op_cond(dv, op_cond_query);
-			tries++;
-			if ((tries % 50) == 0) {
-				txstr("[ACMD41] tries="); txhex(tries);
-				txstr(" ocr="); txhex(op_cond);
-				txstr(" q="); txhex(op_cond_query);
-				txstr("\n");
-			}
-			if (tries > 200) {
-				txstr("ACMD41 TIMEOUT ocr="); txhex(op_cond); txstr("\n");
-				free(dv);
-				return NULL;
-			}
-		} while(0 == (op_cond & 0x80000000));
-
-
-
-
 	} if (SDINFO)
 		sdio_dump_ocr(dv);
 	// }}}
