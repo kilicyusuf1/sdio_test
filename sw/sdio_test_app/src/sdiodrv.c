@@ -2402,7 +2402,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 		// {{{
 		dev->d_dev->sd_cmd  = SDIO_WRMULTI | SDIO_DMA;
 		// }}}
-		xil_printf("A CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 		// The DMA will end the transfer with a STOP_TRANSMISSION
 		// command *IF* count > 1.  The R1 value from the STOP_TRANS
 		// command will still be in the data register after the
@@ -2415,7 +2414,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			// {{{
 #ifdef	INCLUDE_DMA_CONTROLLER
 			if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))){
-				xil_printf("B CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 				_zip->z_dma.d_len = 512;
 				_zip->z_dma.d_rd  = (char *)&buf[s*512];
 				_zip->z_dma.d_wr  = (s&1)
@@ -2430,7 +2428,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			{
 				unsigned *src;
 				src = (unsigned *)&buf[s*512];
-				xil_printf("C CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 				if (s&1) {
 					for(int w=0; w<512/sizeof(uint32_t); w++)
 						dev->d_dev->sd_fifb = src[w];
@@ -2443,7 +2440,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 			if (s == 0) { // Issue WRITE_MULTIPLE_BLOCK cmd
 				// {{{
-				xil_printf("D CMD: 0x%08X\n", dev->d_dev->sd_cmd);							
 				// Issue a write-multiple command
 				dev->d_dev->sd_cmd  = SDIO_ERR | SDIO_WRMULTI;
 
@@ -2465,7 +2461,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 				// {{{
 				// Wait for the last write to complete
 				sdio_wait_while_busy(dev);
-				xil_printf("E CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 				// Then send another block of data
 				dev->d_dev->sd_cmd = (SDIO_WRITE | SDIO_MEM)
 					| ((s&1) ? SDIO_FIFO : 0);
@@ -2475,27 +2470,22 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 		// Wait for the final write to complete
 		sdio_wait_while_busy(dev);
-		xil_printf("F CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 		// Send a (final) STOP_TRANSMISSION request
 		dev->d_dev->sd_data = 0;
 		dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1b | SDIO_ERR) + 12;
-		xil_printf("G CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 	}
 
-	xil_printf("H CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 	sdio_wait_while_busy(dev);
 
 	dev_stat  = dev->d_dev->sd_cmd;
 	card_stat = dev->d_dev->sd_data;
 
 	RELEASE_MUTEX;
-	xil_printf("I CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 	// Error handling
 	// {{{
 	if (err) {
 		// If we had any write failures along the way, return
 		// an error status.
-		xil_printf("J CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 		// Immediately trigger the scope (if not already triggered)
 		// to avoid potentially losing any more data.
 		TRIGGER_SCOPE;
@@ -2532,7 +2522,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			txstr("SDIO-WRITE -> ERR\n");
 		return	RES_ERROR;
 	} return RES_OK;
-	xil_printf("K CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 }
 // }}}
 
@@ -2675,10 +2664,8 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 
 	// Check the results of the STOP_TRANSMISSION request
 	sdio_wait_while_busy(dev);
-	xil_printf("Final CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 	dev_stat  = dev->d_dev->sd_cmd;
 	card_stat = dev->d_dev->sd_data;
-	xil_printf("Final final CMD: 0x%08X\n", dev->d_dev->sd_cmd);
 	RELEASE_MUTEX;
 	CLEAR_DCACHE;
 

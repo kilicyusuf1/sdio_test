@@ -2,7 +2,7 @@
 //Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.1 (win64) Build 6140274 Thu May 22 00:12:29 MDT 2025
-//Date        : Fri Feb  6 10:59:08 2026
+//Date        : Fri Feb 20 11:05:14 2026
 //Host        : DESKTOP-RERM5SE running 64-bit major release  (build 9200)
 //Command     : generate_target design_1_wrapper.bd
 //Design      : design_1_wrapper
@@ -11,7 +11,11 @@
 `timescale 1 ps / 1 ps
 
 module design_1_wrapper
-   (i_card_detect_0,
+   (debug_ar_hit_0,
+    debug_aw_hit_0,
+    debug_r_hit_0,
+    debug_w_hit_0,
+    i_card_detect_0,
     io_cmd_0,
     io_dat_0,
     o_ck_0,
@@ -20,6 +24,10 @@ module design_1_wrapper
     usb_uart_rxd,
     usb_uart_txd,
     sd_reset);
+  output debug_ar_hit_0;
+  output debug_aw_hit_0;
+  output debug_r_hit_0;
+  output debug_w_hit_0;
   input i_card_detect_0;
   inout io_cmd_0;
   inout [3:0]io_dat_0;
@@ -30,6 +38,10 @@ module design_1_wrapper
   output usb_uart_txd;
   output wire sd_reset;
 
+  wire debug_ar_hit_0;
+  wire debug_aw_hit_0;
+  wire debug_r_hit_0;
+  wire debug_w_hit_0;
   wire i_card_detect_0;
   wire io_cmd_0;
   wire [3:0]io_dat_0;
@@ -42,7 +54,11 @@ module design_1_wrapper
   assign sd_reset = 1'b0;
 
   design_1 design_1_i
-       (.i_card_detect_0(i_card_detect_0),
+       (.debug_ar_hit_0(debug_ar_hit_0),
+        .debug_aw_hit_0(debug_aw_hit_0),
+        .debug_r_hit_0(debug_r_hit_0),
+        .debug_w_hit_0(debug_w_hit_0),
+        .i_card_detect_0(i_card_detect_0),
         .io_cmd_0(io_cmd_0),
         .io_dat_0(io_dat_0),
         .o_ck_0(o_ck_0),

@@ -46,7 +46,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 
 # The design that will be created by this Tcl script contains the following 
 # module references:
-# sdio_top
+# axi_ram_sdio_wrapper
 
 # Please add the sources of those modules before sourcing this Tcl script.
 
@@ -143,6 +143,7 @@ xilinx.com:ip:clk_wiz:6.0\
 xilinx.com:ip:proc_sys_reset:5.0\
 xilinx.com:ip:axi_uartlite:2.0\
 xilinx.com:ip:smartconnect:1.0\
+xilinx.com:ip:util_vector_logic:2.0\
 xilinx.com:ip:lmb_v10:3.0\
 xilinx.com:ip:lmb_bram_if_cntlr:4.0\
 xilinx.com:ip:blk_mem_gen:8.4\
@@ -171,7 +172,7 @@ xilinx.com:ip:blk_mem_gen:8.4\
 set bCheckModules 1
 if { $bCheckModules == 1 } {
    set list_check_mods "\ 
-sdio_top\
+axi_ram_sdio_wrapper\
 "
 
    set list_mods_missing ""
@@ -341,6 +342,11 @@ proc create_root_design { parentCell } {
   set o_ck_0 [ create_bd_port -dir O o_ck_0 ]
   set io_cmd_0 [ create_bd_port -dir IO io_cmd_0 ]
   set io_dat_0 [ create_bd_port -dir IO -from 3 -to 0 io_dat_0 ]
+  set i_card_detect_0 [ create_bd_port -dir I i_card_detect_0 ]
+  set debug_aw_hit_0 [ create_bd_port -dir O debug_aw_hit_0 ]
+  set debug_w_hit_0 [ create_bd_port -dir O debug_w_hit_0 ]
+  set debug_ar_hit_0 [ create_bd_port -dir O debug_ar_hit_0 ]
+  set debug_r_hit_0 [ create_bd_port -dir O debug_r_hit_0 ]
 
   # Create instance: microblaze_0, and set properties
   set microblaze_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:microblaze:11.0 microblaze_0 ]
@@ -390,25 +396,38 @@ proc create_root_design { parentCell } {
   # Create instance: axi_smc, and set properties
   set axi_smc [ create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_smc ]
   set_property -dict [list \
-    CONFIG.NUM_MI {2} \
+    CONFIG.NUM_MI {3} \
     CONFIG.NUM_SI {1} \
   ] $axi_smc
 
 
-  # Create instance: sdio_top_0, and set properties
-  set block_name sdio_top
-  set block_cell_name sdio_top_0
-  if { [catch {set sdio_top_0 [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
+  # Create instance: util_vector_logic_0, and set properties
+  set util_vector_logic_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 util_vector_logic_0 ]
+  set_property -dict [list \
+    CONFIG.C_OPERATION {not} \
+    CONFIG.C_SIZE {1} \
+  ] $util_vector_logic_0
+
+
+  # Create instance: axi_ram_sdio_wrapper_0, and set properties
+  set block_name axi_ram_sdio_wrapper
+  set block_cell_name axi_ram_sdio_wrapper_0
+  if { [catch {set axi_ram_sdio_wrapper_0 [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
      return 1
-   } elseif { $sdio_top_0 eq "" } {
+   } elseif { $axi_ram_sdio_wrapper_0 eq "" } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
      return 1
    }
   
+  set_property -dict [ list \
+   CONFIG.POLARITY {ACTIVE_HIGH} \
+ ] [get_bd_pins /axi_ram_sdio_wrapper_0/i_reset]
+
   # Create interface connections
   connect_bd_intf_net -intf_net axi_smc_M00_AXI [get_bd_intf_pins axi_smc/M00_AXI] [get_bd_intf_pins axi_uartlite_0/S_AXI]
-  connect_bd_intf_net -intf_net axi_smc_M01_AXI [get_bd_intf_pins axi_smc/M01_AXI] [get_bd_intf_pins sdio_top_0/S_AXIL]
+  connect_bd_intf_net -intf_net axi_smc_M01_AXI [get_bd_intf_pins axi_ram_sdio_wrapper_0/S_AXIL] [get_bd_intf_pins axi_smc/M01_AXI]
+  connect_bd_intf_net -intf_net axi_smc_M02_AXI [get_bd_intf_pins axi_smc/M02_AXI] [get_bd_intf_pins axi_ram_sdio_wrapper_0/s_axi_b]
   connect_bd_intf_net -intf_net axi_uartlite_0_UART [get_bd_intf_ports usb_uart] [get_bd_intf_pins axi_uartlite_0/UART]
   connect_bd_intf_net -intf_net microblaze_0_M_AXI_DP [get_bd_intf_pins microblaze_0/M_AXI_DP] [get_bd_intf_pins axi_smc/S00_AXI]
   connect_bd_intf_net -intf_net microblaze_0_debug [get_bd_intf_pins mdm_1/MBDEBUG_0] [get_bd_intf_pins microblaze_0/DEBUG]
@@ -417,11 +436,25 @@ proc create_root_design { parentCell } {
 
   # Create port connections
   connect_bd_net -net Net  [get_bd_ports io_cmd_0] \
-  [get_bd_pins sdio_top_0/io_cmd]
+  [get_bd_pins axi_ram_sdio_wrapper_0/io_cmd]
   connect_bd_net -net Net1  [get_bd_ports io_dat_0] \
-  [get_bd_pins sdio_top_0/io_dat]
+  [get_bd_pins axi_ram_sdio_wrapper_0/io_dat]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_debug_ar_hit  [get_bd_pins axi_ram_sdio_wrapper_0/debug_ar_hit] \
+  [get_bd_ports debug_ar_hit_0]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_debug_aw_hit  [get_bd_pins axi_ram_sdio_wrapper_0/debug_aw_hit] \
+  [get_bd_ports debug_aw_hit_0]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_debug_r_hit  [get_bd_pins axi_ram_sdio_wrapper_0/debug_r_hit] \
+  [get_bd_ports debug_r_hit_0]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_debug_w_hit  [get_bd_pins axi_ram_sdio_wrapper_0/debug_w_hit] \
+  [get_bd_ports debug_w_hit_0]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_o_ck  [get_bd_pins axi_ram_sdio_wrapper_0/o_ck] \
+  [get_bd_ports o_ck_0]
+  connect_bd_net -net axi_ram_sdio_wrapper_0_o_int  [get_bd_pins axi_ram_sdio_wrapper_0/o_int] \
+  [get_bd_pins microblaze_0/Interrupt]
   connect_bd_net -net clk_wiz_1_locked  [get_bd_pins clk_wiz_1/locked] \
   [get_bd_pins rst_clk_wiz_1_100M/dcm_locked]
+  connect_bd_net -net i_card_detect_0_1  [get_bd_ports i_card_detect_0] \
+  [get_bd_pins util_vector_logic_0/Op1]
   connect_bd_net -net mdm_1_debug_sys_rst  [get_bd_pins mdm_1/Debug_SYS_Rst] \
   [get_bd_pins rst_clk_wiz_1_100M/mb_debug_sys_rst]
   connect_bd_net -net microblaze_0_Clk  [get_bd_pins clk_wiz_1/clk_out1] \
@@ -430,7 +463,7 @@ proc create_root_design { parentCell } {
   [get_bd_pins rst_clk_wiz_1_100M/slowest_sync_clk] \
   [get_bd_pins axi_smc/aclk] \
   [get_bd_pins axi_uartlite_0/s_axi_aclk] \
-  [get_bd_pins sdio_top_0/i_clk]
+  [get_bd_pins axi_ram_sdio_wrapper_0/i_clk]
   connect_bd_net -net reset_1  [get_bd_ports reset] \
   [get_bd_pins clk_wiz_1/resetn] \
   [get_bd_pins rst_clk_wiz_1_100M/ext_reset_in]
@@ -440,17 +473,19 @@ proc create_root_design { parentCell } {
   [get_bd_pins microblaze_0/Reset]
   connect_bd_net -net rst_clk_wiz_1_100M_peripheral_aresetn  [get_bd_pins rst_clk_wiz_1_100M/peripheral_aresetn] \
   [get_bd_pins axi_uartlite_0/s_axi_aresetn] \
-  [get_bd_pins axi_smc/aresetn] \
-  [get_bd_pins sdio_top_0/i_reset]
-  connect_bd_net -net sdio_top_0_o_ck  [get_bd_pins sdio_top_0/o_ck] \
-  [get_bd_ports o_ck_0]
+  [get_bd_pins axi_smc/aresetn]
+  connect_bd_net -net rst_clk_wiz_1_100M_peripheral_reset  [get_bd_pins rst_clk_wiz_1_100M/peripheral_reset] \
+  [get_bd_pins axi_ram_sdio_wrapper_0/i_reset]
   connect_bd_net -net sys_clock_1  [get_bd_ports sys_clock] \
   [get_bd_pins clk_wiz_1/clk_in1]
+  connect_bd_net -net util_vector_logic_0_Res  [get_bd_pins util_vector_logic_0/Res] \
+  [get_bd_pins axi_ram_sdio_wrapper_0/i_card_detect]
 
   # Create address segments
+  assign_bd_address -offset 0x00040000 -range 0x00001000 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs axi_ram_sdio_wrapper_0/S_AXIL/reg0] -force
+  assign_bd_address -offset 0x00050000 -range 0x00010000 -with_name SEG_axi_ram_sdio_wrapper_0_reg0_1 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs axi_ram_sdio_wrapper_0/s_axi_b/reg0] -force
   assign_bd_address -offset 0x40600000 -range 0x00010000 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs axi_uartlite_0/S_AXI/Reg] -force
-  assign_bd_address -offset 0x00000000 -range 0x00020000 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs microblaze_0_local_memory/dlmb_bram_if_cntlr/SLMB/Mem] -force
-  assign_bd_address -offset 0x00020000 -range 0x00001000 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs sdio_top_0/S_AXIL/reg0] -force
+  assign_bd_address -offset 0x00000000 -range 0x00040000 -target_address_space [get_bd_addr_spaces microblaze_0/Data] [get_bd_addr_segs microblaze_0_local_memory/dlmb_bram_if_cntlr/SLMB/Mem] -force
   assign_bd_address -offset 0x00000000 -range 0x00020000 -target_address_space [get_bd_addr_spaces microblaze_0/Instruction] [get_bd_addr_segs microblaze_0_local_memory/ilmb_bram_if_cntlr/SLMB/Mem] -force
 
 

@@ -189,6 +189,10 @@ module axi_ram_sdio_wrapper #(
     (
         input wire			i_clk, i_reset, i_hsclk,
 
+        output wire debug_aw_hit,
+        output wire debug_w_hit,
+        output wire debug_ar_hit,
+        output wire debug_r_hit,
         // (Optional) AXI-Lite interface
         // {{{
         input	wire		S_AXIL_AWVALID,
@@ -449,7 +453,7 @@ module axi_ram_sdio_wrapper #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH),
         .STRB_WIDTH(STRB_WIDTH),
-        .ID_WIDTH(ID_WIDTH),
+        .ID_WIDTH(AXI_IW),
         .A_PIPELINE_OUTPUT(A_PIPELINE_OUTPUT),
         .B_PIPELINE_OUTPUT(B_PIPELINE_OUTPUT),
         .A_INTERLEAVE(A_INTERLEAVE),
@@ -465,26 +469,26 @@ module axi_ram_sdio_wrapper #(
 
         //DMA connections
         .s_axi_a_awid(M_AXI_AWID),
-        .s_axi_a_awaddr(M_AXI_AWADDR),
+        .s_axi_a_awaddr(M_AXI_AWADDR[ADDR_WIDTH-1:0]),
         .s_axi_a_awlen(M_AXI_AWLEN),
         .s_axi_a_awsize(M_AXI_AWSIZE),
         .s_axi_a_awburst(M_AXI_AWBURST),
         .s_axi_a_awlock(M_AXI_AWLOCK),
         .s_axi_a_awcache(M_AXI_AWCACHE),
         .s_axi_a_awprot(M_AXI_AWPROT),
-        .s_axi_a_awvalid(M_AXI_WVALID),
-        .s_axi_a_awready(M_AXI_WREADY),
+        .s_axi_a_awvalid(M_AXI_AWVALID),
+        .s_axi_a_awready(M_AXI_AWREADY),
         .s_axi_a_wdata(M_AXI_WDATA),
         .s_axi_a_wstrb(M_AXI_WSTRB),
         .s_axi_a_wlast(M_AXI_WLAST),
-        .s_axi_a_wvalid(M_AXI_AWVALID),
-        .s_axi_a_wready(M_AXI_AWREADY),
+        .s_axi_a_wvalid(M_AXI_WVALID),
+        .s_axi_a_wready(M_AXI_WREADY),
         .s_axi_a_bid(M_AXI_BID),
         .s_axi_a_bresp(M_AXI_BRESP),
         .s_axi_a_bvalid(M_AXI_BVALID),
         .s_axi_a_bready(M_AXI_BREADY),
         .s_axi_a_arid(M_AXI_ARID),
-        .s_axi_a_araddr(M_AXI_ARADDR),
+        .s_axi_a_araddr(M_AXI_ARADDR[ADDR_WIDTH-1:0]),
         .s_axi_a_arlen(M_AXI_ARLEN),
         .s_axi_a_arsize(M_AXI_ARSIZE),
         .s_axi_a_arburst(M_AXI_ARBURST),
@@ -537,5 +541,37 @@ module axi_ram_sdio_wrapper #(
         .s_axi_b_rready(s_axi_b_rready)
 
     );
+
+// --- DEBUG LATCH LOGIC ---
+reg debug_aw_hit_reg = 1'b0;
+reg debug_w_hit_reg  = 1'b0;
+reg debug_ar_hit_reg = 1'b0;
+reg debug_r_hit_reg  = 1'b0;
+
+always @(posedge i_clk) begin
+    if (i_reset) begin
+        debug_aw_hit_reg <= 1'b0;
+        debug_w_hit_reg  <= 1'b0;
+        debug_ar_hit_reg <= 1'b0;
+        debug_r_hit_reg  <= 1'b0;
+    end else begin
+        // Yazma Adres hs (AW)
+        if (M_AXI_AWVALID && M_AXI_AWREADY) debug_aw_hit_reg <= 1'b1;
+        
+        // Yazma Veri hs (W)
+        if (M_AXI_WVALID && M_AXI_WREADY)   debug_w_hit_reg  <= 1'b1;
+        
+        // Okuma Adres hs (AR)
+        if (M_AXI_ARVALID && M_AXI_ARREADY) debug_ar_hit_reg <= 1'b1;
+        
+        // Okuma Veri hs (R)
+        if (M_AXI_RVALID && M_AXI_RREADY)   debug_r_hit_reg  <= 1'b1;
+    end
+end
+
+assign debug_aw_hit = debug_aw_hit_reg;
+assign debug_w_hit  = debug_w_hit_reg;
+assign debug_ar_hit = debug_ar_hit_reg;
+assign debug_r_hit  = debug_r_hit_reg;
 
 endmodule
