@@ -30,6 +30,10 @@ set(USER_INCLUDE_DIRECTORIES
 set(USER_COMPILE_SOURCES
 "sdiodrv.c"
 "dma_first_test.c"
+"diskio.c"
+"ff.c"
+"ffsystem.c"
+"ffunicode.c"
 )
 
 # -----------------------------------------
