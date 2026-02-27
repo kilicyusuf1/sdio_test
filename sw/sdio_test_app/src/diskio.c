@@ -40,14 +40,14 @@
 // }}}
 #include "ff.h"		// From FATFS
 #include "diskio.h"	// From FATFS as well
-#include "board.h"	// Defines associated with the driver
-#include "sdspidrv.h"
+#include "xparameters.h"	// Defines associated with the driver
+//#include "sdspidrv.h"
 #include "sdiodrv.h"
-#include "emmcdrv.h"
+//#include "emmcdrv.h"
 #include "diskiodrvr.h"
 
 // #define	STDIO_DEBUG
-#include "zipcpu.h"
+//#include "zipcpu.h"
 
 #ifdef	STDIO_DEBUG
 #include <stdio.h>

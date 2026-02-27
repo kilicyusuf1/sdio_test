@@ -29,7 +29,7 @@ set(USER_INCLUDE_DIRECTORIES
 )
 set(USER_COMPILE_SOURCES
 "sdiodrv.c"
-"dma_first_test.c"
+"fatfs_test_0.c"
 "diskio.c"
 "ff.c"
 "ffsystem.c"
