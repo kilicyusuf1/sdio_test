@@ -46,6 +46,8 @@
 //#include "emmcdrv.h"
 #include "diskiodrvr.h"
 
+#include <string.h> // memcpy icin
+
 // #define	STDIO_DEBUG
 //#include "zipcpu.h"
 
@@ -55,6 +57,9 @@
 #else
 #define	DBGPRINTF	null
 #endif
+
+#define BOUNCE_DMA_ADDR 0x00003000 // DMA'nın göreceği offset adresi (0 tabanlı)
+#define BOUNCE_CPU_ADDR 0x00050000 // İşlemcinin (CPU) göreceği mutlak fiziksel adres
 
 static inline	void	null(char *s,...) {}
 
@@ -164,6 +169,7 @@ DWORD	get_fattime(void) {
 }
 // }}}
 
+/*
 DRESULT	disk_read(
 	BYTE	pdrv,
 	BYTE	*buff,
@@ -177,7 +183,26 @@ DRESULT	disk_read(
 					sector, count, buff);
 }
 // }}}
+*/
+DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count) {
+    if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
 
+    for(UINT i = 0; i < count; i++) {
+        // 1. DMA'ya doğrudan "0x1000'e yaz" diyoruz. (buff'ı umursamıyoruz)
+        int res = (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
+        
+        if(res != RES_OK) return RES_ERROR;
+
+        // 2. CPU'yu tüm RAM bölgesine (İlk 20KB) bakmaya zorluyoruz. 
+        // Cache'te ne varsa silinip fiziksel RAM'den okunacak.
+        //Xil_DCacheInvalidateRange((UINTPTR)0x00050000, 0x5000);
+        
+        // DİKKAT: memcpy YOK! Veriyi FatFs'e kopyalamıyoruz.
+    }
+    return RES_OK;
+}
+
+/*
 DRESULT	disk_write(
 	BYTE		pdrv,
 	const BYTE	*buff,
@@ -189,4 +214,25 @@ DRESULT	disk_write(
 		return RES_ERROR;
 	return (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data,
 					sector, count, buff);
+}
+*/
+DRESULT disk_write(
+    BYTE        pdrv,
+    const BYTE  *buff,
+    DWORD       sector,
+    UINT        count) {
+    
+    if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
+
+    for(UINT i = 0; i < count; i++) {
+        // 1. FatFs'in tuhaf hizasız adresindeki (buff) veriyi, 
+        // İşlemci (CPU) eliyle alıp DMA'nın rahatça okuyabileceği kusursuz adrese koyuyor.
+        memcpy((void *)BOUNCE_CPU_ADDR, buff + (i * 512), 512);
+
+        // 2. Forklifte (DMA) kusursuz adresteki veriyi SD karta yazmasını emrediyoruz
+        int res = (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
+        
+        if(res != RES_OK) return RES_ERROR;
+    }
+    return RES_OK;
 }

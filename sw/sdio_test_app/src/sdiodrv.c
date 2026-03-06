@@ -132,7 +132,7 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 //	SDINFO: Set to turns on a verbose reporting.  This will dump values of
 //		registers, together with their meanings.  When reading,
 //		it will dump sectors read.  Often requires SDDEBUG.
-static	const int	SDINFO = 0, SDDEBUG = 0;
+static	const int	SDINFO = 1, SDDEBUG = 1;
 // }}}
 // Compile time DMA controls
 // {{{
@@ -2387,7 +2387,6 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 	dev->d_dev->sd_dma_length = count;
 	if (count == dev->d_dev->sd_dma_length) { // DMA is present
 		// {{{
-		//txstr("DMA is present !!!!!!!!!!!!!!!!!!!!!!!\n");
 		// Set up the DMA
 		// {{{
 		dev->d_dev->sd_dma_addr = (char *)buf;

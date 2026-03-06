@@ -1,66 +1,53 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
 #include "xil_printf.h"
-#include "ff.h"
+#include "ff.h"         
 #include "diskio.h"
-#include "xparameters.h"
-#include "sleep.h"
+#include "xil_cache.h"
 
-// FatFs Nesneleri
-FATFS fs;           // Filesystem object
-FIL fil;            // File object
-FRESULT res;        // FatFs return code
-UINT bw;            // Bytes written
-BYTE work[FF_MAX_SS]; // Working buffer for f_mkfs
+#define AXI_RAM_BASE    0x00050000
+
+// FatFs objesi hata vermesin diye bir yere koyuyoruz ama bu testte işimiz yok.
+FATFS *fs_ptr = (FATFS *)(AXI_RAM_BASE + 0x4000); 
 
 int main() {
-    xil_printf("\r\n--- SDIO FatFs Test Başlatılıyor ---\r\n");
-
-    // 1. Kartı Mount Et (Sisteme Tanıt)
-    // "0:" sürücü numarasını temsil eder (diskio.c'de MAX_DRIVES 1 yapmıştık)
-    res = f_mount(&fs, "0:", 1);
+    // 1. Cache'i kökten kapatıyoruz
+    Xil_DCacheDisable();
+    Xil_ICacheDisable();
     
-    if (res == FR_NO_FILESYSTEM) {
-        xil_printf("Dosya sistemi bulunamadı, Formatlanıyor...\r\n");
-        // Eğer kart boşsa veya formatı bozuksa FAT32 olarak formatla
-        res = f_mkfs("0:", 0, work, sizeof(work));
-        if (res != FR_OK) {
-            xil_printf("HATA: Formatlama başarısız! Kod: %d\r\n", res);
-        } else {
-            xil_printf("Formatlama başarılı. Tekrar mount ediliyor...\r\n");
-            res = f_mount(&fs, "0:", 1);
-        }
-    }
+    xil_printf("\r\n==========================================\r\n");
+    xil_printf("--- DMA HEDEF ADRES BULMA (SWEEP) TESTI ---\r\n");
+    xil_printf("==========================================\r\n");
 
-    if (res != FR_OK) {
-        xil_printf("HATA: f_mount başarısız! Hata kodu: %d\r\n", res);
-        // Hata 3 (FR_NOT_READY) ise SD kart init olamamıştır, bağlantıları/voltajı kontrol et.
-    } else {
-        xil_printf("Başarılı: SD Kart mount edildi!\r\n");
+    // 2. RAM'in ilk 20 KB'ını tamamen SIFIRLA (İzleri sil)
+    xil_printf("RAM '00' ile temizleniyor...\r\n");
+    memset((void*)AXI_RAM_BASE, 0, 0x5000);
 
-        // 2. Bir Dosya Oluştur ve Yaz
-        xil_printf("test.txt dosyası oluşturuluyor...\r\n");
-        res = f_open(&fil, "test.txt", FA_CREATE_ALWAYS | FA_WRITE | FA_READ);
-        
-        if (res == FR_OK) {
-            char *test_data = "ZipCPU SDIO Kontrolcu ve FatFs Testi Basarili!";
-            res = f_write(&fil, test_data, strlen(test_data), &bw);
-            
-            if (res == FR_OK && bw == strlen(test_data)) {
-                xil_printf("Başarılı: Dosyaya %d byte yazıldı.\r\n", bw);
-            } else {
-                xil_printf("HATA: Yazma işlemi başarısız. Kod: %d\r\n", res);
-            }
+    // 3. Kartı Uyandır
+    // Not: disk_read içindeki memcpy'yi sildiğimiz için FatFs veriyi göremeyecek
+    // ve f_mount doğal olarak Hata 13 dönecek. Bu tamamen beklenen bir durum!
+    xil_printf("Kart init ediliyor (Hata 13 gelmesi normaldir)...\r\n");
+    f_mount(fs_ptr, "0:", 1); 
 
-            // Dosyayı kapat
-            f_close(&fil);
-        } else {
-            xil_printf("HATA: Dosya açılamadı! Kod: %d\r\n", res);
-        }
-    }
+    // 4. Gerçek Test: DMA'yı Manuel Tetikle (Sektör 0)
+    xil_printf("\r\nDMA 0x3000 adresine yazıyor...\r\n");
+    disk_read(0, NULL, 0, 1); 
 
-    // 3. Kartı Unmount Et
-    f_mount(NULL, "0:", 0);
-    xil_printf("Test tamamlandı.\r\n");
+    // 5. HAFIZA TARAMASI (RÖNTGEN)
+    // Şüpheli adreslere işaretçiler (pointer) atıyoruz
+    uint32_t *hedef_0 = (uint32_t *)0x00050000; // Eger DMA her seyi 0'a maskeliyorsa
+    uint32_t *hedef_1 = (uint32_t *)0x00051000; // Eger her sey olmasi gerektigi gibiyse
+    uint32_t *hedef_2 = (uint32_t *)0x00052000; // Rastgele bir adres (Bos olmali)
+    uint32_t *hedef_3 = (uint32_t *)0x00053000;
 
+    xil_printf("\r\n--- RONTGEN SONUCLARI (Ilk 4 Byte) ---\r\n");
+    xil_printf("0x50000 (DMA = 0)      : %08X\r\n", hedef_0[0]);
+    xil_printf("0x51000 (DMA = 0x1000) : %08X\r\n", hedef_1[0]);
+    xil_printf("0x52000 (Rastgele)     : %08X\r\n", hedef_2[0]);
+    xil_printf("0x53000                : %08X\r\n", hedef_3[0]);
+
+    xil_printf("\r\nTest tamamlandi.\r\n");
+    while(1); 
     return 0;
 }

@@ -35,26 +35,25 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // }}}
-#ifndef	SDIODRV_H
-#define	SDIODRV_H
+#ifndef SDIODRV_H
+#define SDIODRV_H
 #include <stdint.h>
 
-typedef	struct SDIO_S {
-	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
-// #if (sizeof(void *) <= 4) && !defined(__LITTLE_ENDIAN__)
-	volatile uint32_t	sd_unused;
-// #endif
-	volatile void		*sd_dma_addr;
-// #if (sizeof(void *) <= 4) &&  defined(__LITTLE_ENDIAN__)
-//	volatile uint32_t	sd_unused;
-// #endif
-	volatile uint32_t	sd_dma_length;
+typedef struct SDIO_S {
+    volatile uint32_t sd_cmd;           // 0x00
+    volatile uint32_t sd_data;          // 0x04
+    volatile uint32_t sd_fifa;          // 0x08
+    volatile uint32_t sd_fifb;          // 0x0C
+    volatile uint32_t sd_phy;           // 0x10
+    volatile void     *sd_dma_addr;     // 0x14 (ALT 32-Bit)
+    volatile uint32_t sd_dma_addr_hi;   // 0x18 (ÜST 32-Bit)
+    volatile uint32_t sd_dma_length;    // 0x1C (DMA Uzunlugu)
 } SDIO;
 
-struct	SDIODRV_S;
+struct  SDIODRV_S;
 
-extern	struct	SDIODRV_S *sdio_init(SDIO *dev);
-extern	int	sdio_write(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
-extern	int	sdio_read(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, char *buf);
-extern	int	sdio_ioctl(struct SDIODRV_S *dev, char cmd, char *buf);
+extern  struct  SDIODRV_S *sdio_init(SDIO *dev);
+extern  int sdio_write(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
+extern  int sdio_read(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, char *buf);
+extern  int sdio_ioctl(struct SDIODRV_S *dev, char cmd, char *buf);
 #endif

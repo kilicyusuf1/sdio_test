@@ -28,12 +28,12 @@ set(USER_UNDEFINED_SYMBOLS
 set(USER_INCLUDE_DIRECTORIES
 )
 set(USER_COMPILE_SOURCES
-"sdiodrv.c"
 "fatfs_test_0.c"
 "diskio.c"
 "ff.c"
 "ffsystem.c"
 "ffunicode.c"
+"sdiodrv.c"
 )
 
 # -----------------------------------------

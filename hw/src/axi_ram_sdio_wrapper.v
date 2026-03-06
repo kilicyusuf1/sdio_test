@@ -288,10 +288,10 @@ module axi_ram_sdio_wrapper #(
 
     );
 
-    wire			M_AXI_AWVALID;
-    wire			M_AXI_AWREADY;
+    (* mark_debug = "true" *) wire			M_AXI_AWVALID;
+    (* mark_debug = "true" *) wire			M_AXI_AWREADY;
     wire [AXI_IW-1:0]	M_AXI_AWID;
-    wire [AW-1:0]		M_AXI_AWADDR;
+    (* mark_debug = "true" *) wire [AW-1:0]		M_AXI_AWADDR;
     wire [7:0]		M_AXI_AWLEN;
     wire [2:0]		M_AXI_AWSIZE;
     wire [1:0]		M_AXI_AWBURST;
@@ -299,9 +299,9 @@ module axi_ram_sdio_wrapper #(
     wire [3:0]		M_AXI_AWCACHE;
     wire	[2:0]		M_AXI_AWPROT;
     wire [3:0]		M_AXI_AWQOS;
-    wire			M_AXI_WVALID;
+    (* mark_debug = "true" *) wire			M_AXI_WVALID;
     wire			M_AXI_WREADY;
-    wire [DW-1:0]		M_AXI_WDATA;
+    (* mark_debug = "true" *) wire [DW-1:0]		M_AXI_WDATA;
     wire [DW/8-1:0]		M_AXI_WSTRB;
     wire			M_AXI_WLAST;
     wire			M_AXI_BVALID;
