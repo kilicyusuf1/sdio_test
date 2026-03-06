@@ -59,7 +59,7 @@
 #endif
 
 #define BOUNCE_DMA_ADDR 0x00003000 // DMA'nın göreceği offset adresi (0 tabanlı)
-#define BOUNCE_CPU_ADDR 0x00050000 // İşlemcinin (CPU) göreceği mutlak fiziksel adres
+#define BOUNCE_CPU_ADDR 0x00053000 // İşlemcinin (CPU) göreceği mutlak fiziksel adres
 
 static inline	void	null(char *s,...) {}
 
@@ -184,24 +184,32 @@ DRESULT	disk_read(
 }
 // }}}
 */
-DRESULT disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count) {
+DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
 
     for(UINT i = 0; i < count; i++) {
-        // 1. DMA'ya doğrudan "0x1000'e yaz" diyoruz. (buff'ı umursamıyoruz)
+        // 1. DMA ile veriyi RAM'e (0x53000) çek
         int res = (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
-        
-        if(res != RES_OK) return RES_ERROR;
+        if(res != 0) return RES_ERROR; 
 
-        // 2. CPU'yu tüm RAM bölgesine (İlk 20KB) bakmaya zorluyoruz. 
-        // Cache'te ne varsa silinip fiziksel RAM'den okunacak.
-        //Xil_DCacheInvalidateRange((UINTPTR)0x00050000, 0x5000);
-        
-        // DİKKAT: memcpy YOK! Veriyi FatFs'e kopyalamıyoruz.
+        // 2. Veriyi FatFs'in buff'ına kopyala
+        memcpy(buff + (i * 512), (void *)BOUNCE_CPU_ADDR, 512);
+
+        // =========================================================
+        // 3. HAYAT KURTARAN DOKUNUŞ: 32-Bit Endianness Düzeltici
+        // Donanımın ters dizdiği baytları FatFs için hizaya sokuyoruz!
+        // =========================================================
+        uint32_t *ptr = (uint32_t *)(buff + (i * 512));
+        for(int j = 0; j < 128; j++) { // 128 kelime * 4 bayt = 512 bayt (1 Sektör)
+            uint32_t val = ptr[j];
+            ptr[j] = ((val & 0xFF000000) >> 24) |
+                     ((val & 0x00FF0000) >>  8) |
+                     ((val & 0x0000FF00) <<  8) |
+                     ((val & 0x000000FF) << 24);
+        }
     }
     return RES_OK;
 }
-
 /*
 DRESULT	disk_write(
 	BYTE		pdrv,
@@ -216,23 +224,29 @@ DRESULT	disk_write(
 					sector, count, buff);
 }
 */
-DRESULT disk_write(
-    BYTE        pdrv,
-    const BYTE  *buff,
-    DWORD       sector,
-    UINT        count) {
-    
+DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
 
     for(UINT i = 0; i < count; i++) {
-        // 1. FatFs'in tuhaf hizasız adresindeki (buff) veriyi, 
-        // İşlemci (CPU) eliyle alıp DMA'nın rahatça okuyabileceği kusursuz adrese koyuyor.
+        // 1. FatFs'ten gelen veriyi BOUNCE (Sıçrama) adresine kopyala
         memcpy((void *)BOUNCE_CPU_ADDR, buff + (i * 512), 512);
 
-        // 2. Forklifte (DMA) kusursuz adresteki veriyi SD karta yazmasını emrediyoruz
+        // =========================================================
+        // 2. YAZMA İÇİN ENDIANNESS DÜZELTİCİ (HATA 2'NİN ÇÖZÜMÜ)
+        // DMA veriyi karta ters yazmasın diye önceden biz tersliyoruz!
+        // =========================================================
+        uint32_t *ptr = (uint32_t *)BOUNCE_CPU_ADDR;
+        for(int j = 0; j < 128; j++) {
+            uint32_t val = ptr[j];
+            ptr[j] = ((val & 0xFF000000) >> 24) |
+                     ((val & 0x00FF0000) >>  8) |
+                     ((val & 0x0000FF00) <<  8) |
+                     ((val & 0x000000FF) << 24);
+        }
+
+        // 3. DMA'ya 0x1000 adresinden alıp SD karta yazmasını söyle
         int res = (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
-        
-        if(res != RES_OK) return RES_ERROR;
+        if(res != 0) return RES_ERROR;
     }
     return RES_OK;
 }

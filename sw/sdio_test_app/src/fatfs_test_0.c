@@ -1,53 +1,75 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include "xil_printf.h"
 #include "ff.h"         
 #include "diskio.h"
 #include "xil_cache.h"
 
-#define AXI_RAM_BASE    0x00050000
+FATFS fs;  
+FIL fil;   
+FRESULT res; 
+UINT bw;
 
-// FatFs objesi hata vermesin diye bir yere koyuyoruz ama bu testte işimiz yok.
-FATFS *fs_ptr = (FATFS *)(AXI_RAM_BASE + 0x4000); 
+// Formatlama islemi icin FatFs'in ihtiyac duydugu gecici calisma alani (4 KB)
+BYTE work_buffer[4096]; 
 
 int main() {
-    // 1. Cache'i kökten kapatıyoruz
     Xil_DCacheDisable();
     Xil_ICacheDisable();
     
-    xil_printf("\r\n==========================================\r\n");
-    xil_printf("--- DMA HEDEF ADRES BULMA (SWEEP) TESTI ---\r\n");
-    xil_printf("==========================================\r\n");
+    xil_printf("\r\n======================================================\r\n");
+    xil_printf("--- FATFS FORMAT VE YAZMA TESTI ---\r\n");
+    xil_printf("======================================================\r\n");
 
-    // 2. RAM'in ilk 20 KB'ını tamamen SIFIRLA (İzleri sil)
-    xil_printf("RAM '00' ile temizleniyor...\r\n");
-    memset((void*)AXI_RAM_BASE, 0, 0x5000);
+    // 1. KARTI FORMATLA (f_mkfs)
+    xil_printf("SD Kart formatlaniyor... (Bu islem kartin boyutuna gore biraz surebilir)\r\n");
+    
+    /* * f_mkfs parametreleri Xilinx'in FatFs versiyonuna gore degisiklik gosterebilir.
+     * Genelde kullanilan standart yapi sudur:
+     * FM_ANY: FAT16/FAT32/exFAT ne uygunsa otomatik sec.
+     * 0: Cluster size otomatik.
+     */
+    //MKFS_PARM opt = {FM_ANY, 0, 0, 0, 0}; 
+    //res = f_mkfs("0:", &opt, work_buffer, sizeof(work_buffer));
+    
+    // NOT: Eger ustteki satir "too many arguments" veya struct hatasi verirse, 
+    // Xilinx SDK eski bir FatFs kullaniyor demektir. O zaman ustteki 2 satiri silip sunu kullan:
+    // res = f_mkfs("0:", FM_ANY, 0, work_buffer, sizeof(work_buffer));
 
-    // 3. Kartı Uyandır
-    // Not: disk_read içindeki memcpy'yi sildiğimiz için FatFs veriyi göremeyecek
-    // ve f_mount doğal olarak Hata 13 dönecek. Bu tamamen beklenen bir durum!
-    xil_printf("Kart init ediliyor (Hata 13 gelmesi normaldir)...\r\n");
-    f_mount(fs_ptr, "0:", 1); 
+    //if (res != FR_OK) {
+    //    xil_printf(">>> HATA! Format atilamadi. Hata Kodu: %d <<<\r\n", res);
+    //    while(1); 
+    //}
+    //xil_printf("-> Formatlama Basarili! Kart tertemiz oldu.\r\n\r\n");
 
-    // 4. Gerçek Test: DMA'yı Manuel Tetikle (Sektör 0)
-    xil_printf("\r\nDMA 0x3000 adresine yazıyor...\r\n");
-    disk_read(0, NULL, 0, 1); 
+    // 2. KARTI MOUNT ET
+    xil_printf("SD Kart sisteme baglaniyor (f_mount)...\r\n");
+    res = f_mount(&fs, "0:", 1); 
+    if (res != FR_OK) {
+        xil_printf(">>> HATA! Mount basarisiz oldu. Hata Kodu: %d <<<\r\n", res);
+        while(1);
+    }
+    xil_printf("-> Mount Basarili!\r\n\r\n");
 
-    // 5. HAFIZA TARAMASI (RÖNTGEN)
-    // Şüpheli adreslere işaretçiler (pointer) atıyoruz
-    uint32_t *hedef_0 = (uint32_t *)0x00050000; // Eger DMA her seyi 0'a maskeliyorsa
-    uint32_t *hedef_1 = (uint32_t *)0x00051000; // Eger her sey olmasi gerektigi gibiyse
-    uint32_t *hedef_2 = (uint32_t *)0x00052000; // Rastgele bir adres (Bos olmali)
-    uint32_t *hedef_3 = (uint32_t *)0x00053000;
+    // 3. DOSYA OLUSTUR VE YAZ
+    xil_printf("Test.txt dosyasi olusturuluyor...\r\n");
+    res = f_open(&fil, "0:Test.txt", FA_CREATE_ALWAYS | FA_WRITE);
+    if (res != FR_OK) {
+        xil_printf(">>> HATA! Dosya acilamadi. Hata Kodu: %d <<<\r\n", res);
+        while(1);
+    }
+    
+    char test_text[] = "Hello World.\r\n";
+    res = f_write(&fil, test_text, strlen(test_text), &bw);
+    
+    // 4. DOSYAYI GUVENLE KAPAT
+    res = f_close(&fil);
+    if (res == FR_OK) {
+        xil_printf("\r\n>>> MUHTESEM ZAFER! FORMAT ATILDI VE DOSYA YAZILDI! <<<\r\n");
+    } else {
+        xil_printf(">>> HATA! Kapatma basarisiz. Hata Kodu: %d <<<\r\n", res);
+    }
 
-    xil_printf("\r\n--- RONTGEN SONUCLARI (Ilk 4 Byte) ---\r\n");
-    xil_printf("0x50000 (DMA = 0)      : %08X\r\n", hedef_0[0]);
-    xil_printf("0x51000 (DMA = 0x1000) : %08X\r\n", hedef_1[0]);
-    xil_printf("0x52000 (Rastgele)     : %08X\r\n", hedef_2[0]);
-    xil_printf("0x53000                : %08X\r\n", hedef_3[0]);
-
-    xil_printf("\r\nTest tamamlandi.\r\n");
     while(1); 
     return 0;
 }
