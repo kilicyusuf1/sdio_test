@@ -189,10 +189,6 @@ module axi_ram_sdio_wrapper #(
     (
         input wire			i_clk, i_reset, i_hsclk,
 
-        output wire debug_aw_hit,
-        output wire debug_w_hit,
-        output wire debug_ar_hit,
-        output wire debug_r_hit,
         // (Optional) AXI-Lite interface
         // {{{
         input	wire		S_AXIL_AWVALID,
@@ -288,10 +284,10 @@ module axi_ram_sdio_wrapper #(
 
     );
 
-    (* mark_debug = "true" *) wire			M_AXI_AWVALID;
-    (* mark_debug = "true" *) wire			M_AXI_AWREADY;
+    wire			M_AXI_AWVALID;
+    wire			M_AXI_AWREADY;
     wire [AXI_IW-1:0]	M_AXI_AWID;
-    (* mark_debug = "true" *) wire [AW-1:0]		M_AXI_AWADDR;
+    wire [AW-1:0]		M_AXI_AWADDR;
     wire [7:0]		M_AXI_AWLEN;
     wire [2:0]		M_AXI_AWSIZE;
     wire [1:0]		M_AXI_AWBURST;
@@ -299,9 +295,9 @@ module axi_ram_sdio_wrapper #(
     wire [3:0]		M_AXI_AWCACHE;
     wire	[2:0]		M_AXI_AWPROT;
     wire [3:0]		M_AXI_AWQOS;
-    (* mark_debug = "true" *) wire			M_AXI_WVALID;
+    wire			M_AXI_WVALID;
     wire			M_AXI_WREADY;
-    (* mark_debug = "true" *) wire [DW-1:0]		M_AXI_WDATA;
+    wire [DW-1:0]		M_AXI_WDATA;
     wire [DW/8-1:0]		M_AXI_WSTRB;
     wire			M_AXI_WLAST;
     wire			M_AXI_BVALID;
@@ -568,10 +564,5 @@ always @(posedge i_clk) begin
         if (M_AXI_RVALID && M_AXI_RREADY)   debug_r_hit_reg  <= 1'b1;
     end
 end
-
-assign debug_aw_hit = debug_aw_hit_reg;
-assign debug_w_hit  = debug_w_hit_reg;
-assign debug_ar_hit = debug_ar_hit_reg;
-assign debug_r_hit  = debug_r_hit_reg;
 
 endmodule

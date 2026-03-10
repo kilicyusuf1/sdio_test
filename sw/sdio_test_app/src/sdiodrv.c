@@ -132,7 +132,7 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 //	SDINFO: Set to turns on a verbose reporting.  This will dump values of
 //		registers, together with their meanings.  When reading,
 //		it will dump sectors read.  Often requires SDDEBUG.
-static	const int	SDINFO = 1, SDDEBUG = 1;
+static	const int	SDINFO = 1, SDDEBUG = 0;
 // }}}
 // Compile time DMA controls
 // {{{

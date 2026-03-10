@@ -58,8 +58,8 @@
 #define	DBGPRINTF	null
 #endif
 
-#define BOUNCE_DMA_ADDR 0x00003000 // DMA'nın göreceği offset adresi (0 tabanlı)
-#define BOUNCE_CPU_ADDR 0x00053000 // İşlemcinin (CPU) göreceği mutlak fiziksel adres
+#define BOUNCE_DMA_ADDR 0x00000000 // DMA'nın göreceği offset adresi (0 tabanlı)
+#define BOUNCE_CPU_ADDR 0x00050000 // İşlemcinin (CPU) göreceği mutlak fiziksel adres
 
 static inline	void	null(char *s,...) {}
 
@@ -188,24 +188,26 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
 
     for(UINT i = 0; i < count; i++) {
-        // 1. DMA ile veriyi RAM'e (0x53000) çek
-        int res = (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
-        if(res != 0) return RES_ERROR; 
-
-        // 2. Veriyi FatFs'in buff'ına kopyala
-        memcpy(buff + (i * 512), (void *)BOUNCE_CPU_ADDR, 512);
-
-        // =========================================================
-        // 3. HAYAT KURTARAN DOKUNUŞ: 32-Bit Endianness Düzeltici
-        // Donanımın ters dizdiği baytları FatFs için hizaya sokuyoruz!
-        // =========================================================
-        uint32_t *ptr = (uint32_t *)(buff + (i * 512));
-        for(int j = 0; j < 128; j++) { // 128 kelime * 4 bayt = 512 bayt (1 Sektör)
-            uint32_t val = ptr[j];
-            ptr[j] = ((val & 0xFF000000) >> 24) |
-                     ((val & 0x00FF0000) >>  8) |
-                     ((val & 0x0000FF00) <<  8) |
-                     ((val & 0x000000FF) << 24);
+        uint32_t target_addr = (uint32_t)(buff + (i * 512));
+        
+        // AKILLI KONTROL: Hedef adres AXI RAM'de mi? (0x50000 ve uzeri)
+        if (target_addr >= 0x00050000) {
+            // ZERO-COPY MODU: DMA dogrudan hedef adrese yazar
+            int res = (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)target_addr);
+            if(res != 0) return RES_ERROR;
+            
+            // DONANIMSAL LITTLE-ENDIAN DEVREDE! SWAP ISLEMINE GEREK KALMADI.
+        } 
+        else {
+            // BOUNCE BUFFER MODU: Hedef Local BRAM'de. 
+            // Once Sircama Tahtasina (AXI RAM'e) al
+            int res = (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
+            if(res != 0) return RES_ERROR;
+            
+            // Veriyi Sircama Tahtasindan Local BRAM'e tasi
+            memcpy((void *)target_addr, (void *)BOUNCE_CPU_ADDR, 512);
+            
+            // SWAP ISLEMINE GEREK KALMADI.
         }
     }
     return RES_OK;
@@ -228,25 +230,27 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr) return RES_ERROR;
 
     for(UINT i = 0; i < count; i++) {
-        // 1. FatFs'ten gelen veriyi BOUNCE (Sıçrama) adresine kopyala
-        memcpy((void *)BOUNCE_CPU_ADDR, buff + (i * 512), 512);
+        uint32_t target_addr = (uint32_t)(buff + (i * 512));
 
-        // =========================================================
-        // 2. YAZMA İÇİN ENDIANNESS DÜZELTİCİ (HATA 2'NİN ÇÖZÜMÜ)
-        // DMA veriyi karta ters yazmasın diye önceden biz tersliyoruz!
-        // =========================================================
-        uint32_t *ptr = (uint32_t *)BOUNCE_CPU_ADDR;
-        for(int j = 0; j < 128; j++) {
-            uint32_t val = ptr[j];
-            ptr[j] = ((val & 0xFF000000) >> 24) |
-                     ((val & 0x00FF0000) >>  8) |
-                     ((val & 0x0000FF00) <<  8) |
-                     ((val & 0x000000FF) << 24);
+        // AKILLI KONTROL: Hedef adres AXI RAM'de mi?
+        if (target_addr >= 0x00050000) {
+            // ZERO-COPY MODU: DMA dogrudan hedef adresten okuyup SD Karta yazar
+            int res = (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)target_addr);
+            if(res != 0) return RES_ERROR;
+            
+            // SWAP ISLEMINE GEREK KALMADI.
         }
+        else {
+            // BOUNCE BUFFER MODU: Hedef Local BRAM'de.
+            // 1. FatFs'ten gelen veriyi BOUNCE (Sircama) adresine kopyala
+            memcpy((void *)BOUNCE_CPU_ADDR, (const void *)target_addr, 512);
 
-        // 3. DMA'ya 0x1000 adresinden alıp SD karta yazmasını söyle
-        int res = (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
-        if(res != 0) return RES_ERROR;
+            // SWAP ISLEMINE GEREK KALMADI.
+
+            // 2. DMA'ya Sircama Tahtasindan alip SD karta yazmasini soyle
+            int res = (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data, sector + i, 1, (char *)BOUNCE_DMA_ADDR);
+            if(res != 0) return RES_ERROR;
+        }
     }
     return RES_OK;
 }
