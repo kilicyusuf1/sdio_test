@@ -40,14 +40,24 @@
 #include <stdint.h>
 
 typedef struct SDIO_S {
-    volatile uint32_t sd_cmd;           // 0x00
-    volatile uint32_t sd_data;          // 0x04
-    volatile uint32_t sd_fifa;          // 0x08
-    volatile uint32_t sd_fifb;          // 0x0C
-    volatile uint32_t sd_phy;           // 0x10
-    volatile void     *sd_dma_addr;     // 0x14 (ALT 32-Bit)
-    volatile uint32_t sd_dma_addr_hi;   // 0x18 (ÜST 32-Bit)
-    volatile uint32_t sd_dma_length;    // 0x1C (DMA Uzunlugu)
+    volatile uint32_t sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
+
+#if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 4)    
+    // 32 bit
+    #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+        // Little Endian
+        volatile void     *sd_dma_addr;
+        volatile uint32_t sd_unused;
+    #else
+        // Big-Endian
+        volatile uint32_t sd_unused;
+        volatile void     *sd_dma_addr;
+    #endif
+#else
+    // 64 bit
+    volatile void         *sd_dma_addr;
+#endif
+    volatile uint32_t sd_dma_length;
 } SDIO;
 
 struct  SDIODRV_S;
