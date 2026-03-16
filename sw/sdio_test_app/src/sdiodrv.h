@@ -35,35 +35,40 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // }}}
-#ifndef SDIODRV_H
-#define SDIODRV_H
+#ifndef	SDIODRV_H
+#define	SDIODRV_H
 #include <stdint.h>
 
-typedef struct SDIO_S {
-    volatile uint32_t sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
+typedef	struct SDIO_S {
+	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
 
-#if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 4)    
-    // 32 bit
-    #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-        // Little Endian
-        volatile void     *sd_dma_addr;
-        volatile uint32_t sd_unused;
-    #else
-        // Big-Endian
-        volatile uint32_t sd_unused;
-        volatile void     *sd_dma_addr;
-    #endif
+	// The next two 32b words are allocated to a 64b pointer.
+	// If pointers are 32b, then we only need to allocate one of them
+	// to this purpose.  Which one we allocated will depend upon whether
+	// we are big-endian (ZipCPU) or little-endian (AXI, and much of the
+	// rest of the world).
+#if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8)
+	// 64b architectures
+	volatile uint32_t	sd_unused;
 #else
-    // 64 bit
-    volatile void         *sd_dma_addr;
+	// 32b architectures, or default if not __SIZEOF_POINTER__ is undefined
+  #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	// Little-Endian
+	volatile void		*sd_dma_addr;
+	volatile uint32_t	sd_unused;
+  #else
+	// Big-Endian, the default if __BYTE_ORDER__ is undefined
+	volatile uint32_t	sd_unused;
+	volatile void		*sd_dma_addr;
+  #endif
 #endif
-    volatile uint32_t sd_dma_length;
+	volatile uint32_t	sd_dma_length;
 } SDIO;
 
-struct  SDIODRV_S;
+struct	SDIODRV_S;
 
-extern  struct  SDIODRV_S *sdio_init(SDIO *dev);
-extern  int sdio_write(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
-extern  int sdio_read(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, char *buf);
-extern  int sdio_ioctl(struct SDIODRV_S *dev, char cmd, char *buf);
+extern	struct	SDIODRV_S *sdio_init(SDIO *dev);
+extern	int	sdio_write(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
+extern	int	sdio_read(struct SDIODRV_S *dev, const unsigned sector, const unsigned count, char *buf);
+extern	int	sdio_ioctl(struct SDIODRV_S *dev, char cmd, char *buf);
 #endif

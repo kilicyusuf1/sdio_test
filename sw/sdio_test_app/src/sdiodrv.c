@@ -81,6 +81,7 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 #include "sdiodrv.h"
 #include "xil_printf.h"
 #include "sleep.h"
+
 // tx* -- debugging output functions
 // {{{
 // Debugging isn't quite as simple as using printf(), since I want to guarantee
@@ -164,6 +165,7 @@ static	const int	SDMULTI = 1;
 #ifndef	CLEAR_DCACHE
 #define	CLEAR_DCACHE
 #endif
+
 typedef	struct	SDIODRV_S {
 	SDIO		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
@@ -237,7 +239,7 @@ static	const	uint32_t
 		SDIOCK_SDR50  = SDIOCK_100MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
 		SDIOCK_SDR104 = SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
 		//
-		SPEED_SLOW   = SDIOCK_100KHZ, //It was 400khz, i changed it to 100khz yusuf
+		SPEED_SLOW   = SDIOCK_100KHZ,
 		SPEED_DEFAULT= SDIOCK_DS,
 		SPEED_FAST   = SDIOCK_HS,
 		//
@@ -422,8 +424,18 @@ void	sdio_dump_cid(SDIODRV *dev) {
 	unsigned sn, md;
 
 	sn = dev->d_CID[2];
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	sn = (((sn >> 24)&0x0ff) << 8)
+		| (((sn >> 16) & 0x0ff) << 16)
+		| (((sn >>  8) & 0x0ff) << 24)
+		| (dev->d_CID[3] & 0x0ff);
+	md = ((dev->d_CID[3] >> 16) & 0x0ff)
+		| (dev->d_CID[3] & 0x0f);
+ & 0x0fff;
+#else
 	sn = (sn << 8) | (dev->d_CID[3] >> 24) & 0x0ff;
 	md = (dev->d_CID[3] >>  8) & 0x0fff;
+#endif
 
 	printf("CID:\n"
 "\tManufacturer ID:  0x%02x\n"
@@ -431,6 +443,18 @@ void	sdio_dump_cid(SDIODRV *dev) {
 "\tProduct Name:     %c%c%c%c%c\n"
 "\tProduct Revision: %x.%x\n"
 "\tSerial Number:    0x%0x\n",
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		(dev->d_CID[0]      )&0x0ff,	// MFR ID
+		(dev->d_CID[0] >>  8)&0x0ff,	// APP ID
+		(dev->d_CID[0] >> 16)&0x0ff,
+		(dev->d_CID[0] >> 24)&0x0ff,	// Prod Name[0]
+		(dev->d_CID[1]      )&0x0ff,	// Prod Name[1]
+		(dev->d_CID[1] >>  8)&0x0ff,	// Prod Name[2]
+		(dev->d_CID[1] >> 16)&0x0ff,	// Prod Name[3]
+		(dev->d_CID[1] >> 24)&0x0ff,	// Prod Name[4]
+		(dev->d_CID[2] >>  4)&0x00f,	// Revision Hi
+		(dev->d_CID[2]      )&0x00f,	//   Lo,
+#else
 		(dev->d_CID[0] >> 24)&0x0ff,	// MFR ID
 		(dev->d_CID[0] >> 16)&0x0ff,	// APP ID
 		(dev->d_CID[0] >>  8)&0x0ff,
@@ -439,8 +463,10 @@ void	sdio_dump_cid(SDIODRV *dev) {
 		(dev->d_CID[1] >> 16)&0x0ff,	// Prod Name[2]
 		(dev->d_CID[1] >>  8)&0x0ff,	// Prod Name[3]
 		(dev->d_CID[1]      )&0x0ff,	// Prod Name[4]
-		(dev->d_CID[2] >> 28)&0x00f,	// Revision Hi
-		(dev->d_CID[2] >> 24)&0x00f, sn);	// Lo, and Serial #
+		(dev->d_CID[2] >> 28)&0x00f,	// Revision Hi,
+		(dev->d_CID[2] >> 24)&0x00f,	//   Lo,
+#endif
+			sn);	// and Serial #
 	printf(
 "\tYear of Man.:     %d\n"
 "\tMonth of Man.:    %d\n",
@@ -547,59 +573,10 @@ void	sdio_unselect_card(SDIODRV *dev) {			// CMD7
 	dev->d_dev->sd_cmd = SDIO_ERR | SDIO_NULLCMD;
 }
 // }}}
-/*
-uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
-	// {{{
-	unsigned pre, imm, post;
-	unsigned c, r;
-
-	// (Önerilen) E latch temizleme denemesi: write-1-to-clear
-	// E bitin yerleşimine göre (senin decode'unda E=bit15)
-	dev->d_dev->sd_cmd = (1u << 15);
-
-	// PRE: CMD8'e başlamadan önce sd_cmd snapshot
-	pre = dev->d_dev->sd_cmd;
-	txstr("[CMD8] pre  sd_cmd="); txhex(pre); txstr("\n");
-	uint32_t phy_pre = dev->d_dev->sd_phy;
-	txstr("[CMD8] pre  sd_phy="); txhex(phy_pre); txstr("\n");
-	// Argümanı yaz
-	dev->d_dev->sd_data = ifcond;
-
-	// CMD8'i başlat
-	dev->d_dev->sd_cmd = SDIO_READREG + 8;
-
-	// IMMEDIATE: komutu yazar yazmaz sd_cmd snapshot (busy beklemeden)
-	imm = dev->d_dev->sd_cmd;
-	txstr("[CMD8] imm  sd_cmd="); txhex(imm); txstr("\n");
-
-	// Busy bitini bekle (zaten fonksiyon var)
-	sdio_wait_while_busy(dev);
-
-	// POST: busy bittikten sonra sd_cmd snapshot
-	post = dev->d_dev->sd_cmd;
-	txstr("[CMD8] post sd_cmd="); txhex(post); txstr("\n");
-
-	// Mevcut sürücünün yaptığı gibi oku
-	c = dev->d_dev->sd_cmd;
-	r = dev->d_dev->sd_data;
-
-	if (SDDEBUG && SDINFO) {
-		txstr("CMD8:    SEND_IF_COND ("); txhex(ifcond); txstr(")\n");
-		txstr("  Cmd:     "); txhex(c); txstr("\n");
-		txstr("  Data:    "); txhex(r); txstr("\n");
-	}
-
-	return r;
-}
-// }}}
-*/
 
 uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond) { // CMD8
 	// {{{
 	unsigned	c, r;
-
-	uint32_t phy_pre1 = dev->d_dev->sd_phy;
-	txstr("[CMD8] pre  sd_phy="); txhex(phy_pre1); txstr("\n");
 
 	dev->d_dev->sd_data = ifcond;
 	dev->d_dev->sd_cmd = SDIO_READREG+8;
@@ -704,10 +681,17 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 	unsigned	phy, vmask = 0, best_eye=0, best_ph=0,
 			first_eye=0, eyesz=0, ph;
 	const	unsigned	pat[16] = {
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+			0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
+			0xDDFFDFFF, 0xFBFFFBFF, 0xFF7FFFBF, 0xEFBDF777,
+			0xF0FFF0FF, 0x3CCCFC0F, 0xCFCC33CC, 0xEEFFEFFF,
+			0xFDFFFDFF, 0xFFBFFFDF, 0xFFF7FFBB, 0xDE7B7FF7
+#else
 			0xFF0FFF00, 0xFFCCC3CC, 0xC33CCCFF, 0xFEFFFEEF,
 			0xFFDFFFDD, 0xFFFBFFFB, 0xBFFF7FFF, 0x77F7BDEF,
 			0xFFF0FFF0, 0x0FFCCC3C, 0xCC33CCCF, 0xFFEFFFEE,
 			0xFFFDFFFD, 0xDFFFBFFF, 0xBBFFF7FF, 0xF77F7BDE
+#endif
 		};
 	unsigned	rxv[16];
 
@@ -959,10 +943,17 @@ void sdio_read_scr(SDIODRV *dev) {	  // ACMD 51
 
 		uv = dev->d_dev->sd_fifa;
 		if (SDINFO) { txhex(uv); if (k < 4) txstr(":"); }
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		dev->d_SCR[k + 0] = uv & 0x0ff; uv >>= 8;
+		dev->d_SCR[k + 1] = uv & 0x0ff; uv >>= 8;
+		dev->d_SCR[k + 2] = uv & 0x0ff; uv >>= 8;
+		dev->d_SCR[k + 3] = uv;
+#else
 		dev->d_SCR[k + 3] = uv & 0x0ff; uv >>= 8;
 		dev->d_SCR[k + 2] = uv & 0x0ff; uv >>= 8;
 		dev->d_SCR[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_SCR[k + 0] = uv;
+#endif
 	} if (SDINFO) txstr("\n");
 
 	phy &= ~SECTOR_MASK;
@@ -1135,10 +1126,17 @@ void sdio_read_csd(SDIODRV *dev) {	  // CMD 9
 
 		uv = dev->d_dev->sd_fifa;
 		if (SDINFO) { txhex(uv); if (k < 12) txstr(":"); }
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		dev->d_CSD[k + 0] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 1] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 2] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 3] = uv;
+#else
 		dev->d_CSD[k + 3] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 2] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 0] = uv;
+#endif
 	}
 
 	unsigned	C_SIZE, READ_BL_LEN, CSD_STRUCTURE;
@@ -1735,71 +1733,14 @@ SDIODRV *sdio_init(SDIO *dev) {
 			// Raw front end I/O
 			clk_phase = 16 << 16;
 		}
-		if (SDDEBUG && SDINFO) {
-			txstr("PHY="); txhex(phy);
-			txstr(" SERDES="); txhex((phy & 0x010000) ? 1 : 0);
-			txstr(" DDR=");    txhex((phy & 0x040000) ? 1 : 0);
-			txstr("\n");
-		}
 		phy = (dv->d_dev->sd_phy & (~SDPHY_PHASEMSK)) | clk_phase;
 		dv->d_dev->sd_phy = phy;
 	}
 
-	// 1. KART TAKILANA KADAR BEKLE (POLLING)
-    // PresentN (Bit 19): 1 = Kart YOK, 0 = Kart VAR
-    if (dev->sd_cmd & SDIO_PRESENTN) {
-        xil_printf("\r\n[Driver] No SD Card Detected! Waiting...\r\n");
-        
-        // Debug: Beklemeden önceki durumu görelim
-        xil_printf("DEBUG: Wait Loop Start CMD_REG: 0x%08X\r\n", dev->sd_cmd);
-
-        while (dev->sd_cmd & SDIO_PRESENTN) {
-             usleep(10000); // 10ms bekle
-        }
-        
-        xil_printf("[Driver] Card Detected! Stabilizing (20ms)...\r\n");
-        usleep(20000); // Debounce
-    } else {
-        xil_printf("[Driver] Card already present.\r\n");
-    }
-
-    // 2. REMOVED BAYRAĞINI TEMİZLE (NULLCMD ile)
-    // Bunu yapmadan önce ve sonra Debug bilgilerini detaylı basalım.
-    
-    xil_printf("[Driver] Clearing Removed Flag (0x00040080)...\r\n");
-    dev->sd_cmd = SDIO_REMOVED | SDIO_NULLCMD;
-
-    // 3. KRİTİK BEKLEME (1ms+)
-    xil_printf("[Driver] Waiting 5ms for Card Ramp-up...\r\n");
-    usleep(5000); 
-
-    // 4. DETAYLI DURUM RAPORU (İstediğin Kısım)
-    uint32_t val_final = dev->sd_cmd;
-    
-    xil_printf("\r\n--- [Driver] STATUS CHECK (Pre-Idle) ---\r\n");
-    xil_printf("FULL CMD REG : 0x%08X\r\n", val_final);
-    xil_printf(" -> Removed  (Bit 18) : %d  (Must be 0)\r\n", (val_final & SDIO_REMOVED) ? 1 : 0);
-    xil_printf(" -> PresentN (Bit 19) : %d  (Must be 0)\r\n", (val_final & SDIO_PRESENTN) ? 1 : 0);
-    xil_printf("----------------------------------------\r\n\r\n");
-
-    // ==================================================================
-    // STANDART INIT (CMD0 ile başlar)
-    // ==================================================================
-    
-	uint32_t val = dev->sd_cmd;
-    uint32_t phy_val = dev->sd_phy; // <--- YENİ: PHY değerini oku
-
-    // İkisini birden bas
-    xil_printf("DEBUG STATUS before GO_IDLE:\r\n");
-    xil_printf(" -> CMD REG: 0x%08X\r\n", val);
-    xil_printf(" -> PHY REG: 0x%08X\r\n", phy_val);
-
-    xil_printf("[Driver] Sending CMD0 (GO_IDLE)...\r\n");
 	sdio_go_idle(dv);
 
 	// Get the IF CONDition
 	// {{{
-
 	ifcond = sdio_send_if_cond(dv,0x01a5);
 
 	hcs = dv->d_dev->sd_cmd;
@@ -1894,11 +1835,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 	if ((dv->d_dev->sd_phy & SDPHY_1P8VSPT)
 			&& (dv->d_OCR & 0x40000000)	// Must support CCS
 			&& (dv->d_OCR & S18R)) {
-		txstr("Switching to 1.8V\n");
+		// txstr("Switching to 1.8V\n");
 		// CMD19, tuning block to determine sample point
-		txstr("[1P8] phy="); txhex(dv->d_dev->sd_phy);
-		txstr(" OCR="); txhex(dv->d_OCR);
-		txstr("\n");
 		sdio_send_voltage_switch(dv);	// CMD 11
 	}
 	// }}}
@@ -1949,6 +1887,20 @@ SDIODRV *sdio_init(SDIO *dev) {
 			} else {
 				unsigned	spd = 0;
 
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+				if (0 != (ubuf[3] & 0x0800)) {
+					// SDR104 supported
+					spd = 4;
+				} else if (0 != (ubuf[3] & 0x1000)) {
+					// DDR50 supported
+					spd = 3;
+				} else if (0 != (ubuf[3] & 0x0400)) {
+					// SDR50 supported
+					spd = 2;
+				} else if (0 != (ubuf[3] & 0x0200)) {
+					// SDR25 supported
+					spd = 1;
+#else
 				if (0 != (ubuf[3] & 0x080000)) {
 					// SDR104 supported
 					spd = 4;
@@ -1961,6 +1913,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 				} else if (0 != (ubuf[3] & 0x020000)) {
 					// SDR25 supported
 					spd = 1;
+#endif
 				} if (0 != (dv->d_dev->sd_cmd & SDIO_ERR))
 					spd = 0;
 
@@ -2269,7 +2222,12 @@ SDIODRV *sdio_init(SDIO *dev) {
 				// If HS mode is available, switch to it
 				// {{{
 				if ((0 == (dv->d_dev->sd_cmd & SDIO_ERR))
-					&& (0 != (ubuf[3] & 0x020000))) {
+#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+					&& (0 != (ubuf[3] & 0x0200))
+#else
+					&& (0 != (ubuf[3] & 0x020000))
+#endif
+				) {
 					// We don't need to read the response,
 					// since we now know it's
 					// supported--just send the request.
@@ -2387,6 +2345,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 	dev->d_dev->sd_dma_length = count;
 	if (count == dev->d_dev->sd_dma_length) { // DMA is present
 		// {{{
+
 		// Set up the DMA
 		// {{{
 		dev->d_dev->sd_dma_addr = (char *)buf;
@@ -2400,6 +2359,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 		// {{{
 		dev->d_dev->sd_cmd  = SDIO_WRMULTI | SDIO_DMA;
 		// }}}
+
 		// The DMA will end the transfer with a STOP_TRANSMISSION
 		// command *IF* count > 1.  The R1 value from the STOP_TRANS
 		// command will still be in the data register after the
@@ -2426,6 +2386,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			{
 				unsigned *src;
 				src = (unsigned *)&buf[s*512];
+
 				if (s&1) {
 					for(int w=0; w<512/sizeof(uint32_t); w++)
 						dev->d_dev->sd_fifb = src[w];
@@ -2438,6 +2399,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 			if (s == 0) { // Issue WRITE_MULTIPLE_BLOCK cmd
 				// {{{
+
 				// Issue a write-multiple command
 				dev->d_dev->sd_cmd  = SDIO_ERR | SDIO_WRMULTI;
 
@@ -2459,6 +2421,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 				// {{{
 				// Wait for the last write to complete
 				sdio_wait_while_busy(dev);
+
 				// Then send another block of data
 				dev->d_dev->sd_cmd = (SDIO_WRITE | SDIO_MEM)
 					| ((s&1) ? SDIO_FIFO : 0);
@@ -2468,6 +2431,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 		// Wait for the final write to complete
 		sdio_wait_while_busy(dev);
+
 		// Send a (final) STOP_TRANSMISSION request
 		dev->d_dev->sd_data = 0;
 		dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1b | SDIO_ERR) + 12;
@@ -2479,11 +2443,13 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 	card_stat = dev->d_dev->sd_data;
 
 	RELEASE_MUTEX;
+
 	// Error handling
 	// {{{
 	if (err) {
 		// If we had any write failures along the way, return
 		// an error status.
+
 		// Immediately trigger the scope (if not already triggered)
 		// to avoid potentially losing any more data.
 		TRIGGER_SCOPE;
@@ -2664,6 +2630,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 	sdio_wait_while_busy(dev);
 	dev_stat  = dev->d_dev->sd_cmd;
 	card_stat = dev->d_dev->sd_data;
+
 	RELEASE_MUTEX;
 	CLEAR_DCACHE;
 
